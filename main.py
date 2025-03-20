@@ -11,7 +11,8 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from app.database import engine, get_db, Base
+from app.database import engine, get_db
+from app.base import Base 
 from app.models.car import Car
 from app.models.review import Review
 from app.schemas import CarResponse

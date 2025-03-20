@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ffffff;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Override Tailwind text colors */
+.text-gray-400, .text-gray-500, .text-gray-600, .text-gray-700, .text-gray-800 {
+  color: black !important;
+}
+
+/* Ensure form inputs have black text */
+input, select, textarea {
+  color: black !important;
+}
