@@ -1,41 +1,58 @@
+# app/main.py
+
 import os
 import logging
 from dotenv import load_dotenv
-from pydantic import BaseModel
 from fastapi import FastAPI, Depends, HTTPException, Body
-
-# 1. Load environment variables
-load_dotenv()
-
-from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, or_, func
+from pydantic import BaseModel
 from app.database import engine, get_db
 from app.base import Base 
 from app.models.car import Car
 from app.models.review import Review
 from app.schemas import CarResponse
-from typing import List
+from typing import List, Optional
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import json
 from datetime import datetime
-import openai
 
-# IMPORTANT: Use the correct file name for your OpenAI service
-from app.openai_service import generate_car_review
+# Load environment variables
+load_dotenv()
 
-# Create tables (this will run on startup)
+# Import Supabase service methods
+from app.supabase_service import (
+    get_cars as supabase_get_cars,
+    get_car_by_id as supabase_get_car,
+    get_reviews_for_car as supabase_get_reviews,
+    get_manufacturers as supabase_get_manufacturers,
+    add_review as supabase_add_review
+)
+
+# Import OpenAI service for AI-generated reviews
+try:
+    from app.openai_service import generate_car_review
+except ImportError:
+    try:
+        from app.ai_service import generate_car_review
+    except ImportError:
+        raise ImportError("AI service module not found")
+
+# Create tables on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# Define request model
 class GenerateReviewRequest(BaseModel):
     car_id: int
+
 # Attach CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Update as needed
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,260 +62,105 @@ app.add_middleware(
 def read_root():
     return {"message": "Welcome to Astra API"}
 
-@app.get("/test-db")
-def test_db(db: Session = Depends(get_db)):
-    try:
-        result = db.execute(text("SELECT 1")).fetchone()
-        return {"message": "Database connection successful", "result": result[0]}
-    except Exception as e:
-        return {"message": "Database connection failed", "error": str(e)}
+# ==========================
+# Car Endpoints (Supabase + SQLite)
+# ==========================
 
-@app.get("/api/cars", response_model=List[CarResponse])
-def get_cars(db: Session = Depends(get_db)):
-    cars = db.query(Car).all()
-    return cars
+@app.get("/api/cars")
+def get_cars(
+    query: str = None, 
+    manufacturer: str = None
+):
+    """Get cars from Supabase."""
+    from app.supabase_service import get_cars
+    cars = get_cars(query=query, manufacturer=manufacturer)
+    return cars or []
 
-@app.get("/api/cars/{car_id}", response_model=CarResponse)
-def get_car(car_id: int, db: Session = Depends(get_db)):
-    car = db.query(Car).filter(Car.id == car_id).first()
-    if car is None:
-        raise HTTPException(status_code=404, detail="Car not found")
+@app.get("/api/cars/{car_id}")
+def get_car(car_id: int):
+    """Get a specific car by ID."""
+    from app.supabase_service import get_car_by_id
+    car = get_car_by_id(car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail=f"Car with ID {car_id} not found")
     return car
 
-@app.get("/api/cars/search/", response_model=List[CarResponse])
-def search_cars(manufacturer: str = None, model: str = None, year: int = None, db: Session = Depends(get_db)):
-    query = db.query(Car)
-    if manufacturer:
-        query = query.filter(Car.manufacturer.ilike(f"%{manufacturer}%"))
-    if model:
-        query = query.filter(Car.model.ilike(f"%{model}%"))
-    if year:
-        query = query.filter(Car.year == year)
-    return query.all()
-
 @app.get("/api/cars/{car_id}/reviews")
-def get_car_reviews(car_id: int, db: Session = Depends(get_db)):
-    car = db.query(Car).filter(Car.id == car_id).first()
-    if car is None:
-        raise HTTPException(status_code=404, detail="Car not found")
-    reviews = db.query(Review).filter(Review.car_id == car_id).all()
+def get_car_reviews(car_id: int):
+    """Get reviews for a specific car."""
+    from app.supabase_service import get_reviews_for_car
+    
+    # First check if car exists
+    from app.supabase_service import get_car_by_id
+    car = get_car_by_id(car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail=f"Car with ID {car_id} not found")
+    
+    # Get reviews
+    reviews = get_reviews_for_car(car_id)
     return reviews
 
-@app.get("/api/reviews/recent")
-def get_recent_reviews(limit: int = 10, db: Session = Depends(get_db)):
-    reviews = db.query(Review).order_by(Review.review_date.desc()).limit(limit).all()
-    return reviews
-
-@app.get("/api/cars/{car_id}/analysis")
-def get_car_analysis(car_id: int, db: Session = Depends(get_db)):
-    car = db.query(Car).filter(Car.id == car_id).first()
-    if car is None:
-        raise HTTPException(status_code=404, detail="Car not found")
-    reviews = db.query(Review).filter(Review.car_id == car_id).all()
-    if reviews:
-        avg_rating = sum(r.rating for r in reviews) / len(reviews)
-        total_reviews = len(reviews)
-        positive_reviews = len([r for r in reviews if r.rating >= 4])
-        negative_reviews = len([r for r in reviews if r.rating <= 2])
-    else:
-        avg_rating = 0
-        total_reviews = 0
-        positive_reviews = 0
-        negative_reviews = 0
-    return {
-        "car": car,
-        "statistics": {
-            "average_rating": round(avg_rating, 2),
-            "total_reviews": total_reviews,
-            "positive_reviews": positive_reviews,
-            "negative_reviews": negative_reviews,
-            "positive_percentage": round((positive_reviews/total_reviews * 100) if total_reviews > 0 else 0, 2)
-        }
-    }
-
-@app.get("/api/analysis/trends")
-async def get_trends(db: Session = Depends(get_db)):
-    return {"message": "Trends endpoint not implemented yet"}
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc):
-    logging.error(f"Validation error: {exc}")
-    return JSONResponse(
-        status_code=422,
-        content={"detail": str(exc)}
-    )
-
-@app.middleware("http")
-async def log_requests(request, call_next):
-    logging.info(f"Request to {request.url.path}")
-    try:
-        response = await call_next(request)
-        return response
-    except Exception as e:
-        logging.error(f"Request failed: {str(e)}")
-        raise
-
-# Review generation endpoints (choose one for production)
 @app.post("/api/reviews/generate")
-async def generate_review(request: GenerateReviewRequest, db: Session = Depends(get_db)):
-    """
-    Generate an AI review for a car.
-    Expects a JSON body with car_id field.
-    """
-    try:
-        # Get car_id from request
-        car_id = request.car_id
-        logging.info(f"Generating review for car_id: {car_id}")
-        
-        # Get car from database
-        car = db.query(Car).filter(Car.id == car_id).first()
-        if not car:
-            logging.error(f"Car with ID {car_id} not found")
-            return JSONResponse(
-                status_code=404,
-                content={"detail": f"Car with ID {car_id} not found"}
-            )
-        
-        logging.info(f"Found car: {car.manufacturer} {car.model}")
-        
-        # Create car data dictionary
-        car_data = {
-            'id': car.id,
-            'manufacturer': car.manufacturer,
-            'model': car.model,
-            'year': car.year,
-            'engine_info': car.engine_info,
-            'transmission': car.transmission,
-            'fuel_type': car.fuel_type,
-            'mpg': car.mpg,
-            'body_type': car.body_type
-        }
-        
-        # Generate the review
-        try:
-            from app.openai_service import generate_car_review
-        except ImportError:
-            try:
-                from app.ai_service import generate_car_review
-            except ImportError:
-                return JSONResponse(
-                    status_code=500, 
-                    content={"detail": "AI service module not found"}
-                )
-        
-        generated_review = generate_car_review(car_data)
-        
-        try:
-            # Parse the review JSON
-            review_data = json.loads(generated_review)
-            
-            # Create a new review
-            new_review = Review(
-                car_id=car_id,
-                review_title=review_data.get('review_title', f"AI Review: {car.year} {car.manufacturer} {car.model}"),
-                review_text=review_data.get('review_text', "No review text generated."),
-                rating=review_data.get('rating', 4.0),
-                author=review_data.get('author', "AI Assistant"),
-                review_date=datetime.utcnow(),
-                is_ai_generated=True
-            )
-            
-            # Save to database
-            db.add(new_review)
-            db.commit()
-            db.refresh(new_review)
-            
-            return new_review
-            
-        except Exception as e:
-            logging.error(f"Error processing review: {e}")
-            
-            # Create a simple review anyway
-            new_review = Review(
-                car_id=car_id,
-                review_title=f"AI Review: {car.year} {car.manufacturer} {car.model}",
-                review_text="An error occurred while generating the detailed review.",
-                rating=3.0,
-                author="AI Assistant",
-                review_date=datetime.utcnow(),
-                is_ai_generated=True
-            )
-            
-            db.add(new_review)
-            db.commit()
-            db.refresh(new_review)
-            
-            return new_review
-            
-    except Exception as e:
-        logging.error(f"Error in generate_review: {str(e)}")
+async def generate_review(request: GenerateReviewRequest):
+    """Generate a review for a car and save it to Supabase."""
+    from app.supabase_service import get_car_by_id, add_review
+    import datetime
+    
+    car_id = request.car_id
+    logging.info(f"Generating review for car_id: {car_id}")
+    
+    # Check if car exists
+    car_data = get_car_by_id(car_id)
+    if not car_data:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": f"Car with ID {car_id} not found"}
+        )
+    
+    # Generate mock review
+    mock_review = {
+        "review_title": f"AI Review: {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}",
+        "review_text": f"This is a test review for the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}. " +
+                      f"The car has a {car_data.get('engine_info', 'modern')} engine and {car_data.get('transmission', 'smooth')} transmission. " +
+                      "Overall, it's a good vehicle for its class.",
+        "rating": 4.2,
+        "author": "AI Reviewer",
+        "review_date": datetime.datetime.utcnow().isoformat(),
+        "is_ai_generated": True
+    }
+    
+    # Add review to Supabase
+    result = add_review(car_id, mock_review)
+    if result:
+        return result
+    else:
         return JSONResponse(
             status_code=500,
-            content={"detail": str(e)}
+            content={"detail": "Failed to add review to Supabase"}
         )
-@app.get("/api/test/generate-review/{car_id}")
-async def test_generate_review(car_id: int, db: Session = Depends(get_db)):
-    """
-    Test endpoint to generate a review without requiring a POST
-    """
-    try:
-        logging.info(f"Testing review generation for car_id: {car_id}")
-        
-        # Get car from database
-        car = db.query(Car).filter(Car.id == car_id).first()
-        if not car:
-            logging.error(f"Car with ID {car_id} not found")
-            return JSONResponse(
-                status_code=404,
-                content={"detail": f"Car with ID {car_id} not found"}
-            )
-        
-        logging.info(f"Found car: {car.manufacturer} {car.model}")
-        
-        # Create car data dictionary
-        car_data = {
-            'id': car.id,
-            'manufacturer': car.manufacturer,
-            'model': car.model,
-            'year': car.year,
-            'engine_info': car.engine_info,
-            'transmission': car.transmission,
-            'fuel_type': car.fuel_type,
-            'mpg': car.mpg,
-            'body_type': car.body_type
+
+@app.get("/api/test-db")
+def test_db():
+    """Test Supabase connection."""
+    from app.supabase_service import supabase
+    
+    if not supabase:
+        return {
+            "message": "Supabase client not initialized. Check your API key.",
+            "status": "error"
         }
         
-        # Try to import the AI service
-        try:
-            from app.openai_service import generate_car_review
-        except ImportError:
-            try:
-                from app.ai_service import generate_car_review
-            except ImportError:
-                return JSONResponse(
-                    status_code=500, 
-                    content={"detail": "AI service module not found"}
-                )
+    try:
+        response = supabase.table('cars').select('count').execute()
+        car_count = len(response.data)
         
-        # Generate the review
-        generated_review = generate_car_review(car_data)
-        if not generated_review:
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Failed to generate review"}
-            )
-        
-        # Return the raw review text
-        return {"generated_review": generated_review, "car_info": car_data}
-        
+        return {
+            "message": "Supabase connection successful",
+            "cars_count": car_count,
+            "status": "success"
+        }
     except Exception as e:
-        logging.error(f"Error in test_generate_review: {str(e)}")
-        import traceback
-        logging.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(e)}
-        )
-# Optionally include ChatController router if needed
-from app.ChatController import router as chat_router
-app.include_router(chat_router, prefix="/api")
+        return {
+            "message": f"Supabase connection failed: {str(e)}",
+            "status": "error"
+        }

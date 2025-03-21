@@ -43,14 +43,25 @@ def generate_car_review(car_data: Dict[str, Any]) -> Optional[str]:
     
     Returns a JSON string with the review content.
     """
+    # Validate car data
+    if not car_data or not isinstance(car_data, dict):
+        logger.error(f"Invalid car data provided: {car_data}")
+        return json.dumps({
+            "review_title": "Error: Invalid Car Data",
+            "rating": 0,
+            "review_text": "Unable to generate review due to missing or invalid car data.",
+            "author": "System"
+        })
+    
+    # Log the actual car we're reviewing to aid debugging
+    car_info = f"{car_data.get('year', 'Unknown')} {car_data.get('manufacturer', 'Unknown')} {car_data.get('model', 'Unknown')}"
+    logger.info(f"Attempting to generate review for: {car_info} (ID: {car_data.get('id', 'Unknown')})")
+    
     if USE_MOCK:
-        logger.info("Using mock review generator")
+        logger.info(f"Using mock review generator for: {car_info}")
         return generate_mock_review(car_data)
         
     try:
-        # Log what car we're reviewing
-        logger.info(f"Generating review for: {car_data['year']} {car_data['manufacturer']} {car_data['model']}")
-        
         prompt = f"""
         Write a detailed car review for a {car_data['year']} {car_data['manufacturer']} {car_data['model']}.
         
@@ -93,20 +104,37 @@ def generate_car_review(car_data: Dict[str, Any]) -> Optional[str]:
             
             # Extract content from the response
             content = response.choices[0].message.content
-            logger.info("Successfully generated review with OpenAI")
+            logger.info(f"Successfully generated review with OpenAI for: {car_info}")
             return content
         except Exception as e:
             logger.error(f"Error in OpenAI API call: {e}")
+            logger.info(f"Falling back to mock review for: {car_info}")
             return generate_mock_review(car_data)
             
     except Exception as e:
         logger.error(f"Error generating review with OpenAI: {e}")
         # Fall back to mock review
+        logger.info(f"Falling back to mock review due to error for: {car_info}")
         return generate_mock_review(car_data)
 
 def generate_mock_review(car_data: Dict[str, Any]) -> str:
     """Generate a mock review when OpenAI API is unavailable."""
-    logger.info(f"Generating mock review for: {car_data['year']} {car_data['manufacturer']} {car_data['model']}")
+    # Ensure we have valid car data
+    if not car_data or not isinstance(car_data, dict):
+        car_data = {
+            'year': 'Unknown',
+            'manufacturer': 'Unknown',
+            'model': 'Unknown',
+            'body_type': 'vehicle',
+            'engine_info': 'engine',
+            'transmission': 'transmission',
+            'fuel_type': 'fuel',
+            'mpg': 0
+        }
+    
+    # Log what we're actually reviewing
+    car_info = f"{car_data.get('year', 'Unknown')} {car_data.get('manufacturer', 'Unknown')} {car_data.get('model', 'Unknown')}"
+    logger.info(f"Generating mock review for: {car_info}")
     
     # Sample author names
     authors = [
