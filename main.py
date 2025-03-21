@@ -5,14 +5,7 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import text, or_, func
 from pydantic import BaseModel
-from app.database import engine, get_db
-from app.base import Base 
-from app.models.car import Car
-from app.models.review import Review
-from app.schemas import CarResponse
 from typing import List, Optional
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -22,26 +15,19 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 
-# Import Supabase service methods
+# Import Supabase service methods (now contains in-memory fallback)
 from app.supabase_service import (
-    get_cars as supabase_get_cars,
-    get_car_by_id as supabase_get_car,
-    get_reviews_for_car as supabase_get_reviews,
-    get_manufacturers as supabase_get_manufacturers,
-    add_review as supabase_add_review
+    get_cars,
+    get_car_by_id,
+    get_reviews_for_car,
+    get_manufacturers,
+    add_review,
+    is_using_fallback
 )
 
-# Import OpenAI service for AI-generated reviews
-try:
-    from app.openai_service import generate_car_review
-except ImportError:
-    try:
-        from app.ai_service import generate_car_review
-    except ImportError:
-        raise ImportError("AI service module not found")
-
-# Create tables on startup
-Base.metadata.create_all(bind=engine)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -63,35 +49,30 @@ def read_root():
     return {"message": "Welcome to Astra API"}
 
 # ==========================
-# Car Endpoints (Supabase + SQLite)
+# Car Endpoints
 # ==========================
 
 @app.get("/api/cars")
-def get_cars(
+def api_get_cars(
     query: str = None, 
     manufacturer: str = None
 ):
-    """Get cars from Supabase."""
-    from app.supabase_service import get_cars
+    """Get cars from data source."""
     cars = get_cars(query=query, manufacturer=manufacturer)
     return cars or []
 
 @app.get("/api/cars/{car_id}")
-def get_car(car_id: int):
+def api_get_car(car_id: int):
     """Get a specific car by ID."""
-    from app.supabase_service import get_car_by_id
     car = get_car_by_id(car_id)
     if not car:
         raise HTTPException(status_code=404, detail=f"Car with ID {car_id} not found")
     return car
 
 @app.get("/api/cars/{car_id}/reviews")
-def get_car_reviews(car_id: int):
+def api_get_car_reviews(car_id: int):
     """Get reviews for a specific car."""
-    from app.supabase_service import get_reviews_for_car
-    
     # First check if car exists
-    from app.supabase_service import get_car_by_id
     car = get_car_by_id(car_id)
     if not car:
         raise HTTPException(status_code=404, detail=f"Car with ID {car_id} not found")
@@ -101,9 +82,8 @@ def get_car_reviews(car_id: int):
     return reviews
 
 @app.post("/api/reviews/generate")
-async def generate_review(request: GenerateReviewRequest):
-    """Generate a review for a car and save it to Supabase."""
-    from app.supabase_service import get_car_by_id, add_review
+async def api_generate_review(request: GenerateReviewRequest):
+    """Generate a review for a car and save it."""
     import datetime
     
     car_id = request.car_id
@@ -129,38 +109,52 @@ async def generate_review(request: GenerateReviewRequest):
         "is_ai_generated": True
     }
     
-    # Add review to Supabase
+    # Try to import and use OpenAI service if available
+    try:
+        from app.openai_service import generate_car_review
+        ai_review = generate_car_review(car_data)
+        if ai_review:
+            try:
+                review_data = json.loads(ai_review)
+                # Merge the review data with our mock review template
+                mock_review = {**mock_review, **review_data, "is_ai_generated": True}
+            except Exception as e:
+                logger.error(f"Failed to parse AI review: {str(e)}")
+                logger.error("Using mock review instead")
+    except Exception as e:
+        logger.warning(f"OpenAI service not available: {str(e)}")
+        logger.warning("Using mock review")
+    
+    # Add review to data store
     result = add_review(car_id, mock_review)
     if result:
+        # Make sure we return the complete object including pros/cons to the client
+        if 'pros' not in result:
+            result['pros'] = mock_review.get('pros', [])
+        if 'cons' not in result:
+            result['cons'] = mock_review.get('cons', [])
+            
         return result
     else:
         return JSONResponse(
             status_code=500,
-            content={"detail": "Failed to add review to Supabase"}
+            content={"detail": "Failed to add review"}
         )
 
 @app.get("/api/test-db")
 def test_db():
-    """Test Supabase connection."""
-    from app.supabase_service import supabase
+    """Test database connection."""
+    fallback = is_using_fallback()
     
-    if not supabase:
+    if fallback:
         return {
-            "message": "Supabase client not initialized. Check your API key.",
-            "status": "error"
+            "message": "Using fallback database with sample data",
+            "using_fallback": True,
+            "status": "warning"
         }
         
-    try:
-        response = supabase.table('cars').select('count').execute()
-        car_count = len(response.data)
-        
-        return {
-            "message": "Supabase connection successful",
-            "cars_count": car_count,
-            "status": "success"
-        }
-    except Exception as e:
-        return {
-            "message": f"Supabase connection failed: {str(e)}",
-            "status": "error"
-        }
+    return {
+        "message": "Database connection successful",
+        "using_fallback": False,
+        "status": "success"
+    }

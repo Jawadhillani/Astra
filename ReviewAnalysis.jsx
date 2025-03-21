@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, Database } from 'lucide-react';
+import { AlertCircle, RefreshCw, Database, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, Star, Zap, Award, Car, MessageSquare } from 'lucide-react';
 
 const ReviewAnalysis = ({ carId, usingFallback = false }) => {
   const [carData, setCarData] = useState(null);
@@ -11,6 +11,9 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
   const [generatedReview, setGeneratedReview] = useState(null);
   const [apiQuotaExceeded, setApiQuotaExceeded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [showFullReview, setShowFullReview] = useState(false);
+  const [animatePros, setAnimatePros] = useState(false);
+  const [animateCons, setAnimateCons] = useState(false);
 
   // Initial load effect
   useEffect(() => {
@@ -22,6 +25,14 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
       setError("No car ID provided");
     }
   }, [carId, usingFallback, retryCount]);
+
+  // Animation effect for pros and cons after review is generated
+  useEffect(() => {
+    if (reviewGenerated) {
+      setTimeout(() => setAnimatePros(true), 300);
+      setTimeout(() => setAnimateCons(true), 600);
+    }
+  }, [reviewGenerated]);
 
   /**
    * Fetch basic car data from the backend.
@@ -85,6 +96,9 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
     setReviewGenerated(false);
     setGeneratedReview(null);
     setApiQuotaExceeded(false);
+    setShowFullReview(false);
+    setAnimatePros(false);
+    setAnimateCons(false);
 
     try {
       console.log(`Generating AI review for carId=${carId}`);
@@ -105,6 +119,11 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
       
       try {
         const reviewData = JSON.parse(responseText);
+        
+        // Add default empty arrays for pros and cons if they don't exist
+        if (!reviewData.pros) reviewData.pros = [];
+        if (!reviewData.cons) reviewData.cons = [];
+        
         setGeneratedReview(reviewData);
         setReviewGenerated(true);
         
@@ -121,7 +140,9 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
         console.error("Error parsing review data:", parseError);
         setGeneratedReview({
           review_title: "AI Generated Review",
-          review_text: responseText.substring(0, 500) + "..."
+          review_text: responseText.substring(0, 500) + "...",
+          pros: [],
+          cons: []
         });
         setReviewGenerated(true);
       }
@@ -142,112 +163,265 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
     setRetryCount(prev => prev + 1);
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow p-6 mb-6">
-      <h2 className="text-xl font-bold mb-4">AI Review Generator</h2>
-      
-      {usingFallback && (
-        <div className="bg-yellow-100 text-yellow-800 rounded p-3 mb-4 flex items-center text-sm">
-          <Database className="w-4 h-4 mr-2" />
-          Using fallback database - some features may be limited
-        </div>
-      )}
+  const toggleFullReview = () => {
+    setShowFullReview(!showFullReview);
+  };
 
-      {loading ? (
-        <div className="text-center p-4">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2">Loading car data...</p>
-        </div>
-      ) : error ? (
-        <div>
-          <div className="p-4 bg-red-100 text-red-700 rounded mb-4">
-            <p className="font-medium">Error</p>
-            <p className="mt-1">{error}</p>
+  // Helper to render rating stars
+  const renderStars = (rating) => {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating - fullStars >= 0.5;
+    
+    return (
+      <div className="flex items-center">
+        {Array(5).fill(0).map((_, i) => (
+          <Star 
+            key={i} 
+            className={`w-5 h-5 ${i < fullStars ? 'text-yellow-500 fill-yellow-500' : 
+              (i === fullStars && hasHalfStar ? 'text-yellow-500 fill-yellow-500 opacity-60' : 'text-gray-700')}`} 
+          />
+        ))}
+        <span className="ml-2 text-xl font-bold gradient-text">{rating}</span>
+      </div>
+    );
+  };
+
+  // Get a gradient based on rating
+  const getRatingGradient = (rating) => {
+    if (rating >= 4.5) return "from-violet-600 to-purple-600";
+    if (rating >= 4.0) return "from-blue-600 to-violet-600";
+    if (rating >= 3.5) return "from-blue-600 to-blue-400";
+    if (rating >= 3.0) return "from-green-600 to-blue-600";
+    if (rating >= 2.0) return "from-yellow-600 to-orange-600";
+    return "from-red-600 to-orange-600";
+  };
+
+  return (
+    <div className="card-with-header mb-6 page-transition">
+      <div className="header bg-gradient-to-r from-violet-900 to-indigo-900">
+        <h2 className="text-xl font-bold flex items-center">
+          <Zap className="w-5 h-5 mr-2 animated-icon" /> AI Review Generator
+        </h2>
+      </div>
+      
+      <div className="content">
+        {usingFallback && (
+          <div className="alert-warning p-4 rounded-lg mb-4 flex items-center text-sm">
+            <Database className="w-4 h-4 mr-2" />
+            Using fallback database - some features may be limited
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-center p-8">
+            <div className="w-12 h-12 border-t-4 border-violet-500 border-solid rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-300">Loading car data...</p>
+          </div>
+        ) : error ? (
+          <div>
+            <div className="alert-error p-4 rounded-lg mb-4">
+              <p className="font-medium">Error</p>
+              <p className="mt-1">{error}</p>
+              {usingFallback && (
+                <p className="mt-2 text-sm">
+                  Note: You're currently using the fallback database which contains limited sample data.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={handleRetry}
+              className="btn-primary flex items-center"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </button>
+          </div>
+        ) : carData ? (
+          <div>
+            <div className="flex flex-wrap md:flex-nowrap gap-6 mb-6">
+              <div className="w-full md:w-2/3">
+                <p className="mb-1 text-gray-400">Generating review for:</p>
+                <p className="text-2xl font-bold gradient-text">{carData.year} {carData.manufacturer} {carData.model}</p>
+                <div className="flex flex-wrap gap-6 mt-4">
+                  {carData.engine_info && (
+                    <div className="flex items-start">
+                      <div className="p-2 rounded-lg bg-gradient-to-br from-blue-900 to-blue-700 mr-3">
+                        <Car className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Engine</p>
+                        <p className="text-sm">{carData.engine_info}</p>
+                      </div>
+                    </div>
+                  )}
+                  {carData.mpg && (
+                    <div className="flex items-start">
+                      <div className="p-2 rounded-lg bg-gradient-to-br from-violet-900 to-violet-700 mr-3">
+                        <Zap className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Fuel Economy</p>
+                        <p className="text-sm">{carData.mpg} MPG</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="w-full md:w-1/3 flex items-center justify-center">
+                <div className="bg-gradient-to-r from-violet-900 to-blue-900 p-4 rounded-lg text-center w-full">
+                  <Car className="w-12 h-12 mx-auto text-white mb-2 animated-icon" />
+                  <p className="text-xs text-gray-300">ID: {carData.id}</p>
+                </div>
+              </div>
+            </div>
+
+            {apiQuotaExceeded && (
+              <div className="alert-warning p-4 rounded-lg mb-4">
+                <p className="font-medium">Note: OpenAI API quota exceeded</p>
+                <p className="text-sm mt-1">
+                  System is generating a simulated review based on the selected car's specifications.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-6">
+              <button
+                onClick={handleGenerateReview}
+                disabled={generating}
+                className={`${generating ? 'bg-gray-600' : 'btn-gradient'} px-6 py-3 rounded-lg font-medium flex-grow flex justify-center items-center transition-all`}
+              >
+                {generating ? (
+                  <>
+                    <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
+                    Generating AI Review...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2" />
+                    Generate AI Review
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {reviewGenerated && generatedReview && (
+              <div className="dynamic-card overflow-hidden transition-all duration-500 ease-in-out">
+                {/* Review Header */}
+                <div className={`p-4 bg-gradient-to-r ${getRatingGradient(generatedReview.rating)}`}>
+                  <h3 className="font-bold text-xl text-white">{generatedReview.review_title}</h3>
+                  <div className="flex justify-between items-center mt-3">
+                    <p className="text-sm text-gray-200 flex items-center">
+                      <MessageSquare className="w-4 h-4 mr-1" /> 
+                      By: {generatedReview.author || "AI Assistant"}
+                    </p>
+                    <div className="flex items-center">
+                      {renderStars(generatedReview.rating)}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Review Body */}
+                <div className="p-6">
+                  <div className="prose prose-invert max-w-none">
+                    {showFullReview ? (
+                      <div>
+                        {generatedReview.review_text.split('\n\n').map((paragraph, index) => (
+                          <p key={index} className="mb-4 text-gray-300">{paragraph}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-300">
+                        {generatedReview.review_text?.substring(0, 250)}
+                        {generatedReview.review_text?.length > 250 ? '...' : ''}
+                      </p>
+                    )}
+                    
+                    {generatedReview.review_text?.length > 250 && (
+                      <button 
+                        onClick={toggleFullReview} 
+                        className="mt-2 text-violet-400 hover:text-violet-300 flex items-center font-medium"
+                      >
+                        {showFullReview 
+                          ? <>Show less <ChevronUp className="w-4 h-4 ml-1" /></> 
+                          : <>Read full review <ChevronDown className="w-4 h-4 ml-1" /></>}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Pros and Cons */}
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Pros */}
+                    <div className={`bg-gradient-to-r from-violet-900/20 to-transparent p-5 rounded-lg border border-violet-800 transform transition-all duration-500 ease-in-out ${animatePros ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                      <h4 className="font-bold text-violet-400 flex items-center mb-4">
+                        <ThumbsUp className="w-5 h-5 mr-2" />
+                        Pros
+                      </h4>
+                      {generatedReview.pros && generatedReview.pros.length > 0 ? (
+                        <ul className="space-y-2">
+                          {generatedReview.pros.map((pro, index) => (
+                            <li key={index} className="flex items-start text-gray-300">
+                              <div className="h-5 w-5 rounded-full bg-gradient-to-r from-violet-600 to-blue-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">+</div>
+                              <span>{pro}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-gray-400 text-sm italic">No specific pros mentioned</p>
+                      )}
+                    </div>
+                    
+                    {/* Cons */}
+                    <div className={`bg-gradient-to-r from-red-900/20 to-transparent p-5 rounded-lg border border-red-800 transform transition-all duration-500 ease-in-out ${animateCons ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                      <h4 className="font-bold text-red-400 flex items-center mb-4">
+                        <ThumbsDown className="w-5 h-5 mr-2" />
+                        Cons
+                      </h4>
+                      {generatedReview.cons && generatedReview.cons.length > 0 ? (
+                        <ul className="space-y-2">
+                          {generatedReview.cons.map((con, index) => (
+                            <li key={index} className="flex items-start text-gray-300">
+                              <div className="h-5 w-5 rounded-full bg-gradient-to-r from-red-600 to-orange-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">-</div>
+                              <span>{con}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-gray-400 text-sm italic">No specific cons mentioned</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="border-t border-gray-800 px-4 py-3 bg-gradient-to-r from-gray-900 to-dark-card">
+                  <p className="text-gray-400 text-sm">
+                    This AI-generated review has been added to the reviews section.
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {!reviewGenerated && (
+              <div className="mt-8 border-t border-gray-800 pt-4">
+                <p className="text-sm text-gray-400">
+                  The AI review generator creates a balanced assessment based on this vehicle's specifications.
+                </p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Reviews include ratings, detailed analysis, and specific pros and cons.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="alert-warning p-4 rounded-lg">
+            <p>Unable to load car data. Please try again later.</p>
             {usingFallback && (
               <p className="mt-2 text-sm">
                 Note: You're currently using the fallback database which contains limited sample data.
               </p>
             )}
           </div>
-          <button
-            onClick={handleRetry}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </button>
-        </div>
-      ) : carData ? (
-        <div>
-          <div className="mb-6">
-            <p className="mb-1 font-medium">Generating review for:</p>
-            <p className="text-lg font-bold">{carData.year} {carData.manufacturer} {carData.model}</p>
-            <p className="text-sm text-gray-600">Engine: {carData.engine_info || 'N/A'}</p>
-            <p className="text-sm text-gray-600">ID: {carData.id}</p>
-          </div>
-
-          {apiQuotaExceeded && (
-            <div className="p-4 bg-yellow-100 text-yellow-800 rounded mb-4">
-              <p className="font-medium">Note: OpenAI API quota exceeded</p>
-              <p className="text-sm mt-1">
-                System is generating a simulated review as the OpenAI API quota has been exceeded.
-                The review will still be based on the selected car's specifications.
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={handleGenerateReview}
-              disabled={generating}
-              className={`px-4 py-2 ${generating ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'} text-white rounded flex-grow flex justify-center items-center`}
-            >
-              {generating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Generating...
-                </>
-              ) : (
-                'Generate AI Review'
-              )}
-            </button>
-          </div>
-          
-          {reviewGenerated && (
-            <div className="p-4 bg-green-100 text-green-800 rounded mb-4">
-              <p className="font-medium">Review successfully generated!</p>
-              {generatedReview && (
-                <div className="mt-3 p-3 bg-white rounded text-gray-800">
-                  <p className="font-medium">{generatedReview.review_title}</p>
-                  <p className="text-sm mt-1">
-                    By: {generatedReview.author || "AI Assistant"}
-                  </p>
-                  <p className="text-sm mt-1">
-                    Rating: {generatedReview.rating}/5
-                  </p>
-                  <p className="text-sm mt-1">
-                    {generatedReview.review_text?.substring(0, 200)}...
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          
-          <div className="mt-4 text-xs text-gray-600">
-            <p>This will create an AI-generated review for this vehicle based on its specifications.</p>
-            <p>The review will be added to the reviews section.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="p-4 bg-yellow-100 text-yellow-800 rounded">
-          <p>Unable to load car data. Please try again later.</p>
-          {usingFallback && (
-            <p className="mt-2 text-sm">
-              Note: You're currently using the fallback database which contains limited sample data.
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
