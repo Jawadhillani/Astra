@@ -44,7 +44,7 @@ const NavDropdown = ({ title, isActive, onClick, children }) => {
       {isOpen && (
         <div className="absolute left-0 mt-2 w-56 rounded-md shadow-lg z-50 overflow-hidden">
           {/* Solid background to ensure visibility */}
-          <div className="absolute inset-0 bg-dark-card opacity-95 backdrop-blur-lg border border-dark-border rounded-md shadow-2xl"></div>
+          <div className="absolute inset-0 bg-dark-card opacity-95 backdrop-blur-lg border border-violet-900/30 rounded-md shadow-2xl"></div>
           
           {/* Content */}
           <div className="relative z-10 py-2 rounded-md">
@@ -81,7 +81,7 @@ const Navbar = ({ currentView, onChangeView }) => {
       scrolled ? 'shadow-xl' : ''
     }`}>
       {/* Solid background that's always visible */}
-      <div className="absolute inset-0 bg-dark-bg border-b border-dark-border"></div>
+      <div className="absolute inset-0 bg-dark-bg bg-opacity-95 backdrop-filter backdrop-blur-lg border-b border-violet-900/30"></div>
       
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-4">

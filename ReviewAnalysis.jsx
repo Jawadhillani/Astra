@@ -350,49 +350,83 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
                   
                   {/* Pros and Cons */}
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Pros */}
-                    <div className={`bg-gradient-to-r from-violet-900/20 to-transparent p-5 rounded-lg border border-violet-800 transform transition-all duration-500 ease-in-out ${animatePros ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-                      <h4 className="font-bold text-violet-400 flex items-center mb-4">
-                        <ThumbsUp className="w-5 h-5 mr-2" />
-                        Pros
-                      </h4>
-                      {generatedReview.pros && generatedReview.pros.length > 0 ? (
-                        <ul className="space-y-2">
-                          {generatedReview.pros.map((pro, index) => (
-                            <li key={index} className="flex items-start text-gray-300">
-                              <div className="h-5 w-5 rounded-full bg-gradient-to-r from-violet-600 to-blue-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">+</div>
-                              <span>{pro}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-400 text-sm italic">No specific pros mentioned</p>
-                      )}
+                    {/* Pros - with animated gradient border */}
+                    <div 
+                      className={`relative rounded-lg transform transition-all duration-500 ease-in-out ${animatePros ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
+                      style={{
+                        background: `
+                          linear-gradient(var(--dark-surface), var(--dark-surface)) padding-box,
+                          linear-gradient(to right, rgba(139, 92, 246, 0.7), rgba(76, 29, 149, 0.1)) border-box
+                        `,
+                        backgroundOrigin: 'border-box',
+                        backgroundClip: 'padding-box, border-box',
+                        border: '1px solid transparent',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {/* Add a subtle animated glow effect */}
+                      <div className="absolute inset-0 bg-violet-900/10 rounded-lg filter blur-md opacity-30 animate-pulse"></div>
+                      
+                      <div className="p-5 relative z-10">
+                        <h4 className="font-bold text-violet-400 flex items-center mb-4">
+                          <ThumbsUp className="w-5 h-5 mr-2" />
+                          Pros
+                        </h4>
+                        {generatedReview.pros && generatedReview.pros.length > 0 ? (
+                          <ul className="space-y-2">
+                            {generatedReview.pros.map((pro, index) => (
+                              <li key={index} className="flex items-start text-gray-300">
+                                <div className="h-5 w-5 rounded-full bg-gradient-to-r from-violet-600 to-blue-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">+</div>
+                                <span>{pro}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-gray-400 text-sm italic">No specific pros mentioned</p>
+                        )}
+                      </div>
                     </div>
                     
-                    {/* Cons */}
-                    <div className={`bg-gradient-to-r from-red-900/20 to-transparent p-5 rounded-lg border border-red-800 transform transition-all duration-500 ease-in-out ${animateCons ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-                      <h4 className="font-bold text-red-400 flex items-center mb-4">
-                        <ThumbsDown className="w-5 h-5 mr-2" />
-                        Cons
-                      </h4>
-                      {generatedReview.cons && generatedReview.cons.length > 0 ? (
-                        <ul className="space-y-2">
-                          {generatedReview.cons.map((con, index) => (
-                            <li key={index} className="flex items-start text-gray-300">
-                              <div className="h-5 w-5 rounded-full bg-gradient-to-r from-red-600 to-orange-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">-</div>
-                              <span>{con}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-400 text-sm italic">No specific cons mentioned</p>
-                      )}
+                    {/* Cons - with animated gradient border */}
+                    <div 
+                      className={`relative rounded-lg transform transition-all duration-500 ease-in-out ${animateCons ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
+                      style={{
+                        background: `
+                          linear-gradient(var(--dark-surface), var(--dark-surface)) padding-box,
+                          linear-gradient(to right, rgba(239, 68, 68, 0.7), rgba(127, 29, 29, 0.1)) border-box
+                        `,
+                        backgroundOrigin: 'border-box',
+                        backgroundClip: 'padding-box, border-box',
+                        border: '1px solid transparent',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {/* Add a subtle animated glow effect */}
+                      <div className="absolute inset-0 bg-red-900/10 rounded-lg filter blur-md opacity-30 animate-pulse"></div>
+                      
+                      <div className="p-5 relative z-10">
+                        <h4 className="font-bold text-red-400 flex items-center mb-4">
+                          <ThumbsDown className="w-5 h-5 mr-2" />
+                          Cons
+                        </h4>
+                        {generatedReview.cons && generatedReview.cons.length > 0 ? (
+                          <ul className="space-y-2">
+                            {generatedReview.cons.map((con, index) => (
+                              <li key={index} className="flex items-start text-gray-300">
+                                <div className="h-5 w-5 rounded-full bg-gradient-to-r from-red-600 to-orange-600 flex items-center justify-center text-white text-xs mr-2 mt-0.5 flex-shrink-0">-</div>
+                                <span>{con}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-gray-400 text-sm italic">No specific cons mentioned</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="border-t border-gray-800 px-4 py-3 bg-gradient-to-r from-gray-900 to-dark-card">
+                <div className="border-t border-violet-900/20 px-4 py-3 bg-gradient-to-r from-gray-900 to-dark-card">
                   <p className="text-gray-400 text-sm">
                     This AI-generated review has been added to the reviews section.
                   </p>
@@ -401,7 +435,7 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
             )}
             
             {!reviewGenerated && (
-              <div className="mt-8 border-t border-gray-800 pt-4">
+              <div className="mt-8 border-t border-violet-900/20 pt-4">
                 <p className="text-sm text-gray-400">
                   The AI review generator creates a balanced assessment based on this vehicle's specifications.
                 </p>
