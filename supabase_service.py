@@ -1,4 +1,3 @@
-# app/supabase_service.py
 import os
 import logging
 import json
@@ -53,8 +52,8 @@ except Exception as e:
 FALLBACK_CARS = [
     {
         "id": 1,
-        "manufacturer": "Tesla", 
-        "model": "Model 3", 
+        "manufacturer": "Tesla",
+        "model": "Model 3",
         "year": 2023,
         "body_type": "Sedan",
         "engine_info": "Electric Motor",
@@ -64,8 +63,8 @@ FALLBACK_CARS = [
     },
     {
         "id": 2,
-        "manufacturer": "BMW", 
-        "model": "X5", 
+        "manufacturer": "BMW",
+        "model": "X5",
         "year": 2022,
         "body_type": "SUV",
         "engine_info": "3.0L Turbocharged I6",
@@ -75,8 +74,8 @@ FALLBACK_CARS = [
     },
     {
         "id": 3,
-        "manufacturer": "Toyota", 
-        "model": "Camry", 
+        "manufacturer": "Toyota",
+        "model": "Camry",
         "year": 2023,
         "body_type": "Sedan",
         "engine_info": "2.5L I4",
@@ -86,8 +85,8 @@ FALLBACK_CARS = [
     },
     {
         "id": 4,
-        "manufacturer": "Ford", 
-        "model": "F-150", 
+        "manufacturer": "Ford",
+        "model": "F-150",
         "year": 2022,
         "body_type": "Pickup",
         "engine_info": "3.5L EcoBoost V6",
@@ -97,10 +96,9 @@ FALLBACK_CARS = [
     },
     {
         "id": 5,
-        "manufacturer": "Honda", 
-        "model": "Civic", 
-        "year":
-        2023,
+        "manufacturer": "Honda",
+        "model": "Civic",
+        "year": 2023,
         "body_type": "Sedan",
         "engine_info": "1.5L Turbocharged I4",
         "transmission": "CVT",
@@ -295,7 +293,6 @@ def get_reviews_for_car(car_id: int) -> List[Dict]:
         logger.error(f"Error fetching reviews from Supabase: {str(e)}")
         return get_reviews_for_car(car_id)  # Recursively call using fallback
 
-# Modified add_review function to handle pros/cons correctly
 def add_review(car_id: int, review_data: Dict) -> Optional[Dict]:
     """
     Add a new review for a car.
@@ -359,7 +356,7 @@ def add_review(car_id: int, review_data: Dict) -> Optional[Dict]:
         # For fallback mode
         if is_using_fallback():
             # Generate fallback review
-            mock_review_id = f"{car_id}_{int(datetime.datetime.now().timestamp())}"
+            mock_review_id = f"{car_id}_{int(datetime.now().timestamp())}"
             result = {
                 **db_compatible_review,
                 'id': mock_review_id,
@@ -370,3 +367,13 @@ def add_review(car_id: int, review_data: Dict) -> Optional[Dict]:
             return result
             
         return None
+
+# ================================
+# NEXT.JS Chat Integration Below
+# ================================
+"""
+Below is the Next.js code that can be placed in your Next.js project's /app or /pages/api directory.
+It uses the same Supabase environment variables but in the format required by Next.js (NEXT_PUBLIC_*).
+"""
+
+# End of supabase_service.py

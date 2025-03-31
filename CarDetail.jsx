@@ -22,7 +22,8 @@ import {
 } from 'lucide-react';
 
 import ReviewAnalysis from './ReviewAnalysis';
-import ChatInterface from './ChatInterface';
+// NEW IMPORT (instead of ChatInterface)
+import EnhancedNeuralInterface from './EnhancedNeuralInterface';
 
 export default function CarDetail({ car, onBack }) {
   const [reviews, setReviews] = useState([]);
@@ -36,7 +37,7 @@ export default function CarDetail({ car, onBack }) {
   // "closed" | "opening" | "open" | "closing"
   const [chatState, setChatState] = useState("closed");
 
-  // We’ll store the button’s center & dimensions to animate from there
+  // We'll store the button’s center & dimensions to animate from there
   const [buttonRect, setButtonRect] = useState({
     x: 0,
     y: 0,
@@ -56,7 +57,7 @@ export default function CarDetail({ car, onBack }) {
   const mainContentRef = useRef(null);
   const chatButtonRef = useRef(null);
 
-  // --- Body scroll locking when chat is NOT "closed" ---
+  // -- Body scroll locking when chat is NOT "closed" --
   useEffect(() => {
     if (chatState !== "closed") {
       document.body.style.overflow = "hidden";
@@ -68,7 +69,7 @@ export default function CarDetail({ car, onBack }) {
     };
   }, [chatState]);
 
-  // --- On mount, check if car is valid, etc. ---
+  // -- On mount, check if car is valid, etc. --
   useEffect(() => {
     console.log("CarDetail mounted with car:", car);
     if (car && car.id) {
@@ -85,7 +86,7 @@ export default function CarDetail({ car, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [car]);
 
-  // --- Check DB status, then whether car exists ---
+  // -- Check DB status, then whether car exists --
   async function checkCarAndDatabaseStatus() {
     try {
       // 1) Check database
@@ -93,12 +94,13 @@ export default function CarDetail({ car, onBack }) {
       const dbData = await dbResponse.json();
       const isUsingFallback = dbData.using_fallback || false;
       const isDbConnected = dbData.status === "success";
-      
+
       console.log("Database status:", dbData);
 
       // 2) Check if car with ID exists
       const carResponse = await fetch(`/api/cars/${car.id}`);
       console.log("Car fetch status:", carResponse.status);
+
       if (!carResponse.ok) {
         setCarStatus({
           valid: false,
@@ -117,7 +119,7 @@ export default function CarDetail({ car, onBack }) {
         usingFallback: isUsingFallback,
         dbConnected: isDbConnected
       });
-      
+
       // Fetch reviews
       fetchReviews();
 
@@ -133,7 +135,7 @@ export default function CarDetail({ car, onBack }) {
     }
   }
 
-  // --- Fetch car reviews from your /api/ endpoint ---
+  // -- Fetch car reviews from your /api/ endpoint --
   async function fetchReviews() {
     setRefreshingReviews(true);
     try {
@@ -177,14 +179,14 @@ export default function CarDetail({ car, onBack }) {
     }
   }
 
-  // --- Simple aggregator for a summary. You could use AI or advanced logic too. ---
+  // -- Simple aggregator for a summary. You could use AI or advanced logic too. --
   function generateSummary(reviewData) {
     if (!reviewData || reviewData.length === 0) return;
-    
+
     const avgRating = reviewData.reduce((sum, review) => sum + (review.rating || 0), 0) / reviewData.length;
     const positiveCount = reviewData.filter(r => (r.rating || 0) >= 4).length;
     const negativeCount = reviewData.filter(r => (r.rating || 0) <= 2).length;
-    
+
     setSummary({
       avgRating: avgRating.toFixed(1),
       positivePercentage: ((positiveCount / reviewData.length) * 100).toFixed(0),
@@ -193,7 +195,7 @@ export default function CarDetail({ car, onBack }) {
     });
   }
 
-  // --- Show/hide the AI review analysis panel ---
+  // -- Show/hide the AI review analysis panel --
   function toggleAnalysis() {
     setShowAnalysis(!showAnalysis);
     // If chat is open, close it
@@ -202,7 +204,7 @@ export default function CarDetail({ car, onBack }) {
     }
   }
 
-  // --- "Genie" chat open/close with clip-path swirl effect ---
+  // -- "Genie" chat open/close with clip-path swirl effect --
   function openChat() {
     // Capture button center for clip-path origin
     if (chatButtonRef.current) {
@@ -226,7 +228,7 @@ export default function CarDetail({ car, onBack }) {
     setTimeout(() => setChatState("closed"), 500);
   }
 
-  // --- Star rendering for the reviews ---
+  // -- Star rendering for the reviews --
   function renderStars(rating) {
     if (!rating) return null;
     return Array(5).fill(0).map((_, i) => (
@@ -237,21 +239,23 @@ export default function CarDetail({ car, onBack }) {
     ));
   }
 
-  // --- Database status info (fallback/connection issues) ---
+  // -- Database status info (fallback/connection issues) --
   function renderDatabaseStatus() {
     if (carStatus.usingFallback) {
       return (
-        <div style={{
-          background: 'linear-gradient(to right, rgba(252, 211, 77, 0.1), rgba(251, 191, 36, 0.05))',
-          borderRadius: '0.5rem',
-          border: '1px solid rgba(252, 211, 77, 0.3)',
-          marginBottom: '1rem',
-          padding: '0.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          fontSize: '0.875rem',
-          color: 'rgb(252, 211, 77)'
-        }}>
+        <div
+          style={{
+            background: 'linear-gradient(to right, rgba(252, 211, 77, 0.1), rgba(251, 191, 36, 0.05))',
+            borderRadius: '0.5rem',
+            border: '1px solid rgba(252, 211, 77, 0.3)',
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: '0.875rem',
+            color: 'rgb(252, 211, 77)'
+          }}
+        >
           <Database className="w-4 h-4 mr-2" />
           Using fallback database with sample data
         </div>
@@ -259,17 +263,19 @@ export default function CarDetail({ car, onBack }) {
     }
     if (!carStatus.dbConnected) {
       return (
-        <div style={{
-          background: 'linear-gradient(to right, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))',
-          borderRadius: '0.5rem',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          marginBottom: '1rem',
-          padding: '0.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          fontSize: '0.875rem',
-          color: 'rgb(239, 68, 68)'
-        }}>
+        <div
+          style={{
+            background: 'linear-gradient(to right, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))',
+            borderRadius: '0.5rem',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: '0.875rem',
+            color: 'rgb(239, 68, 68)'
+          }}
+        >
           <Database className="w-4 h-4 mr-2" />
           Database connection issue
         </div>
@@ -278,11 +284,11 @@ export default function CarDetail({ car, onBack }) {
     return null;
   }
 
-  // --- Placeholder approach: custom color gradient based on manufacturer name ---
+  // -- Placeholder approach: custom color gradient based on manufacturer name --
   function getCarImage() {
     const manufacturer = car?.manufacturer?.toLowerCase() || '';
     let bgColor = 'from-blue-600 to-black';
-    
+
     if (manufacturer.includes('tesla')) {
       bgColor = 'from-red-600 to-black';
     } else if (manufacturer.includes('bmw')) {
@@ -294,7 +300,7 @@ export default function CarDetail({ car, onBack }) {
     } else if (manufacturer.includes('honda')) {
       bgColor = 'from-red-600 to-blue-600';
     }
-    
+
     return (
       <div className={`h-48 bg-gradient-to-r ${bgColor} rounded-lg flex items-center justify-center text-white`}>
         <span className="text-3xl font-bold">{car?.manufacturer}</span>
@@ -302,7 +308,7 @@ export default function CarDetail({ car, onBack }) {
     );
   }
 
-  // --- The “Genie” chat container with swirling conic-gradient & sparkles ---
+  // -- The “Genie” chat container with swirling conic-gradient & sparkles --
   function renderChatContainer() {
     if (chatState === "closed") return null;
 
@@ -332,7 +338,8 @@ export default function CarDetail({ car, onBack }) {
 
           <div className="pt-16 flex-1 overflow-auto">
             <div className="max-w-5xl mx-auto h-full">
-              <ChatInterface carId={car.id} />
+              {/* Replace ChatInterface with EnhancedNeuralInterface */}
+              <EnhancedNeuralInterface carId={car.id} />
             </div>
           </div>
         </div>
@@ -340,7 +347,7 @@ export default function CarDetail({ car, onBack }) {
     );
   }
 
-  // --- If car is invalid or DB fails, show an error card ---
+  // -- If car is invalid or DB fails, show an error card --
   if (!carStatus.valid) {
     return (
       <div>
@@ -356,13 +363,15 @@ export default function CarDetail({ car, onBack }) {
 
         {renderDatabaseStatus()}
 
-        <div style={{
-          background: 'linear-gradient(to right, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))',
-          borderRadius: '0.5rem',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          padding: '1.5rem',
-          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-        }}>
+        <div
+          style={{
+            background: 'linear-gradient(to right, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))',
+            borderRadius: '0.5rem',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            padding: '1.5rem',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+          }}
+        >
           <h2 className="text-xl font-bold mb-2 text-red-500">Car Not Found</h2>
           <p className="mb-4 text-red-600">
             {carStatus.message || "This car doesn't exist in the database."}
@@ -382,7 +391,7 @@ export default function CarDetail({ car, onBack }) {
     );
   }
 
-  // --- Otherwise, render the car details & reviews as normal ---
+  // -- Otherwise, render the car details & reviews as normal --
   return (
     <div className="relative">
       {/* Main Content */}
@@ -433,11 +442,14 @@ export default function CarDetail({ car, onBack }) {
                   {/* Specs */}
                   <div className="grid grid-cols-2 gap-4 mt-2">
                     <div className="flex items-start">
-                      <div className="bg-blue-900/30 p-2 rounded-lg mr-3" style={{
-                        background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(37, 99, 235, 0.1))',
-                        backdropFilter: 'blur(4px)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)'
-                      }}>
+                      <div
+                        className="bg-blue-900/30 p-2 rounded-lg mr-3"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(37, 99, 235, 0.1))',
+                          backdropFilter: 'blur(4px)',
+                          border: '1px solid rgba(59, 130, 246, 0.3)'
+                        }}
+                      >
                         <Fuel className="w-5 h-5 text-blue-500" />
                       </div>
                       <div>
@@ -447,11 +459,14 @@ export default function CarDetail({ car, onBack }) {
                     </div>
 
                     <div className="flex items-start">
-                      <div className="p-2 rounded-lg mr-3" style={{
-                        background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.2), rgba(4, 120, 87, 0.1))',
-                        backdropFilter: 'blur(4px)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)'
-                      }}>
+                      <div
+                        className="p-2 rounded-lg mr-3"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.2), rgba(4, 120, 87, 0.1))',
+                          backdropFilter: 'blur(4px)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)'
+                        }}
+                      >
                         <Gauge className="w-5 h-5 text-green-500" />
                       </div>
                       <div>
@@ -461,11 +476,14 @@ export default function CarDetail({ car, onBack }) {
                     </div>
 
                     <div className="flex items-start">
-                      <div className="p-2 rounded-lg mr-3" style={{
-                        background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(124, 58, 237, 0.1))',
-                        backdropFilter: 'blur(4px)',
-                        border: '1px solid rgba(139, 92, 246, 0.3)'
-                      }}>
+                      <div
+                        className="p-2 rounded-lg mr-3"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(124, 58, 237, 0.1))',
+                          backdropFilter: 'blur(4px)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)'
+                        }}
+                      >
                         <Settings className="w-5 h-5 text-purple-500" />
                       </div>
                       <div>
@@ -475,11 +493,14 @@ export default function CarDetail({ car, onBack }) {
                     </div>
 
                     <div className="flex items-start">
-                      <div className="p-2 rounded-lg mr-3" style={{
-                        background: 'linear-gradient(135deg, rgba(202, 138, 4, 0.2), rgba(202, 138, 4, 0.1))',
-                        backdropFilter: 'blur(4px)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)'
-                      }}>
+                      <div
+                        className="p-2 rounded-lg mr-3"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(202, 138, 4, 0.2), rgba(202, 138, 4, 0.1))',
+                          backdropFilter: 'blur(4px)',
+                          border: '1px solid rgba(245, 158, 11, 0.3)'
+                        }}
+                      >
                         <Shield className="w-5 h-5 text-yellow-500" />
                       </div>
                       <div>
@@ -494,18 +515,18 @@ export default function CarDetail({ car, onBack }) {
                     <button
                       onClick={toggleAnalysis}
                       className={`px-4 py-2 rounded-lg font-medium flex items-center transition-colors ${
-                        showAnalysis 
-                          ? 'bg-black text-white' 
+                        showAnalysis
+                          ? 'bg-black text-white'
                           : 'bg-gray-800 text-white hover:bg-black'
                       }`}
                     >
-                      {showAnalysis ? "Hide AI Analysis" : "Generate AI Review"}
+                      {showAnalysis ? 'Hide AI Analysis' : 'Generate AI Review'}
                     </button>
 
                     {/* The "Genie" chat button */}
                     <div className="relative">
                       {/* (Optional) Robot Head if chat is closed */}
-                      {chatState === "closed" && (
+                      {chatState === 'closed' && (
                         <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-10 h-10 robot-head">
                           <div className="robot-face bg-gradient-to-b from-slate-700 to-slate-900 w-full h-full rounded-lg relative overflow-hidden border-2 border-slate-600 shadow-lg">
                             {/* Eyes */}
@@ -529,12 +550,12 @@ export default function CarDetail({ car, onBack }) {
 
                       <button
                         ref={chatButtonRef}
-                        onClick={chatState === "closed" ? openChat : closeChat}
+                        onClick={chatState === 'closed' ? openChat : closeChat}
                         onMouseEnter={() => setIsButtonHovered(true)}
                         onMouseLeave={() => setIsButtonHovered(false)}
                         className={`relative px-4 py-2 rounded-lg font-medium flex items-center transition-colors ${
-                          chatState !== "closed"
-                            ? 'bg-blue-600 text-white' 
+                          chatState !== 'closed'
+                            ? 'bg-blue-600 text-white'
                             : 'bg-gradient-to-r from-gray-800 to-gray-900 text-blue-400 border border-blue-900/30 hover:border-blue-500/50 hover:from-gray-800 hover:to-gray-800'
                         } overflow-hidden z-30`}
                       >
@@ -555,10 +576,10 @@ export default function CarDetail({ car, onBack }) {
                           <MessageCircle className="w-3 h-3 text-white relative z-10" />
                         </div>
 
-                        <span>{chatState !== "closed" ? "Hide Chat" : "Ask About This Car"}</span>
+                        <span>{chatState !== 'closed' ? 'Hide Chat' : 'Ask About This Car'}</span>
 
                         {/* Energy pulse on hover if chat is closed */}
-                        {chatState === "closed" && isButtonHovered && (
+                        {chatState === 'closed' && isButtonHovered && (
                           <div className="energy-pulse absolute inset-0 rounded-lg">
                             <div className="pulse absolute inset-0 rounded-lg border border-cyan-500 animate-energy-pulse"></div>
                           </div>
@@ -569,9 +590,7 @@ export default function CarDetail({ car, onBack }) {
                 </div>
 
                 {/* Car image placeholder */}
-                <div>
-                  {getCarImage()}
-                </div>
+                <div>{getCarImage()}</div>
               </div>
             </div>
           </div>
@@ -580,10 +599,7 @@ export default function CarDetail({ car, onBack }) {
         {/* AI Analysis panel */}
         {showAnalysis && (
           <div className="mb-6">
-            <ReviewAnalysis 
-              carId={car.id} 
-              usingFallback={carStatus.usingFallback} 
-            />
+            <ReviewAnalysis carId={car.id} usingFallback={carStatus.usingFallback} />
           </div>
         )}
 
@@ -595,15 +611,13 @@ export default function CarDetail({ car, onBack }) {
               <div className="card-with-header">
                 <div className="header flex justify-between items-center">
                   <h2 className="text-xl font-bold">Reviews</h2>
-                  <button 
-                    onClick={fetchReviews} 
+                  <button
+                    onClick={fetchReviews}
                     disabled={refreshingReviews}
                     className="flex items-center text-gray-300 hover:text-white text-sm bg-gray-700 px-3 py-1 rounded-lg"
                   >
-                    <RefreshCw 
-                      className={`w-4 h-4 mr-1 ${
-                        refreshingReviews ? 'animate-spin' : ''
-                      }`}
+                    <RefreshCw
+                      className={`w-4 h-4 mr-1 ${refreshingReviews ? 'animate-spin' : ''}`}
                     />
                     Refresh
                   </button>
@@ -624,16 +638,13 @@ export default function CarDetail({ car, onBack }) {
                         >
                           <div className="flex justify-between">
                             <h3 className="font-bold text-gray-900">
-                              {review.review_title || review.title || "Review"}
+                              {review.review_title || review.title || 'Review'}
                             </h3>
-                            <div className="flex">
-                              {renderStars(review.rating)}
-                            </div>
+                            <div className="flex">{renderStars(review.rating)}</div>
                           </div>
                           <p className="text-sm text-gray-500 mb-3">
-                            By {review.author} •{" "}
-                            {new Date(review.review_date || review.date)
-                              .toLocaleDateString()}
+                            By {review.author} •{' '}
+                            {new Date(review.review_date || review.date).toLocaleDateString()}
                           </p>
                           {(review.is_ai_generated || review.is_mock) && (
                             <div className="flex items-center text-xs text-blue-600 mb-2">
@@ -650,12 +661,8 @@ export default function CarDetail({ car, onBack }) {
                   ) : (
                     <div className="bg-gray-50 p-8 rounded-lg text-center">
                       <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-600 mb-2">
-                        No reviews yet for this vehicle.
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Be the first to generate an AI review!
-                      </p>
+                      <p className="text-gray-600 mb-2">No reviews yet for this vehicle.</p>
+                      <p className="text-sm text-gray-500">Be the first to generate an AI review!</p>
                     </div>
                   )}
                 </div>
@@ -671,17 +678,18 @@ export default function CarDetail({ car, onBack }) {
                   </div>
                   <div className="content">
                     <div className="flex items-center mb-5">
-                      <div className="p-3 rounded-full mr-4" style={{
-                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1))',
-                        border: '1px solid rgba(59, 130, 246, 0.3)'
-                      }}>
+                      <div
+                        className="p-3 rounded-full mr-4"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1))',
+                          border: '1px solid rgba(59, 130, 246, 0.3)'
+                        }}
+                      >
                         <Star className="w-6 h-6 text-blue-600 fill-blue-600" />
                       </div>
                       <div>
                         <div className="flex items-center">
-                          <span className="text-3xl font-bold text-gray-900">
-                            {summary.avgRating}
-                          </span>
+                          <span className="text-3xl font-bold text-gray-900">{summary.avgRating}</span>
                           <div className="flex ml-3 mt-1">
                             {renderStars(parseFloat(summary.avgRating))}
                           </div>
@@ -691,7 +699,7 @@ export default function CarDetail({ car, onBack }) {
                         </p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-4 mt-6">
                       <div>
                         <div className="flex justify-between text-sm mb-1">
@@ -728,6 +736,7 @@ export default function CarDetail({ car, onBack }) {
                         </div>
                       </div>
                     </div>
+
                   </div>
                 </div>
               </div>

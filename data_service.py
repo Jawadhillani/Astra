@@ -140,3 +140,4 @@ class CarDataService:
         year_pattern = r'\b(19|20)\d{2}\b'  # Match years from 1900-2099
         matches = re.findall(year_pattern, query)
         return [int(year) for year in matches]
+    

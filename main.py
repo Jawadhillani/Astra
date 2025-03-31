@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import json
 from datetime import datetime
-
+from app.ChatController import router as chat_router
 # Load environment variables
 load_dotenv()
 
@@ -43,7 +43,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.include_router(chat_router)
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Astra API"}
