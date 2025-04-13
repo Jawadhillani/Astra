@@ -1,6 +1,6 @@
 // components/ChatComponents.jsx
 import React from 'react';
-import { Car, Fuel, Gauge, Star, Shield, Calendar } from 'lucide-react';
+import { Car, Fuel, Gauge, Star, Shield, Calendar, BarChart3, ThumbsUp, ThumbsDown, Activity } from 'lucide-react';
 
 // Component for displaying car specifications in a visually appealing way
 export const SpecificationCard = ({ car }) => {
@@ -128,7 +128,10 @@ export const ProsConsCard = ({ pros, cons }) => {
       <div className="p-3">
         {pros && pros.length > 0 && (
           <div className="mb-2">
-            <h4 className="text-sm font-medium text-green-500 mb-1">Pros:</h4>
+            <h4 className="text-sm font-medium text-green-500 mb-1 flex items-center">
+              <ThumbsUp className="w-4 h-4 mr-1" />
+              Pros:
+            </h4>
             <ul className="pl-5 space-y-1">
               {pros.map((pro, idx) => (
                 <li key={idx} className="text-sm text-gray-300 list-disc">{pro}</li>
@@ -139,7 +142,10 @@ export const ProsConsCard = ({ pros, cons }) => {
         
         {cons && cons.length > 0 && (
           <div>
-            <h4 className="text-sm font-medium text-red-500 mb-1">Cons:</h4>
+            <h4 className="text-sm font-medium text-red-500 mb-1 flex items-center">
+              <ThumbsDown className="w-4 h-4 mr-1" />
+              Cons:
+            </h4>
             <ul className="pl-5 space-y-1">
               {cons.map((con, idx) => (
                 <li key={idx} className="text-sm text-gray-300 list-disc">{con}</li>
@@ -177,7 +183,10 @@ export const CategoryScoresCard = ({ scores }) => {
       backgroundClip: 'padding-box, border-box'
     }}>
       <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-3 py-2 border-b border-gray-700">
-        <h3 className="font-medium text-white">Category Ratings</h3>
+        <h3 className="font-medium text-white flex items-center">
+          <BarChart3 className="w-4 h-4 mr-2" />
+          Category Ratings
+        </h3>
       </div>
       
       <div className="p-3">
@@ -186,7 +195,7 @@ export const CategoryScoresCard = ({ scores }) => {
             <div key={index}>
               <div className="flex justify-between items-center mb-1">
                 <span className="text-sm text-gray-300">{category.name}</span>
-                <span className="text-sm font-medium text-gray-300">{category.score}/5</span>
+                <span className="text-sm font-medium text-gray-300">{category.score.toFixed(1)}/5</span>
               </div>
               <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
                 <div 
@@ -221,7 +230,10 @@ export const SentimentCard = ({ sentiment }) => {
       backgroundClip: 'padding-box, border-box'
     }}>
       <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-3 py-2 border-b border-gray-700">
-        <h3 className="font-medium text-white">Review Sentiment</h3>
+        <h3 className="font-medium text-white flex items-center">
+          <Activity className="w-4 h-4 mr-2" />
+          Review Sentiment
+        </h3>
       </div>
       
       <div className="p-3">

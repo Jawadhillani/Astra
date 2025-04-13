@@ -1,14 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List, Optional, Dict
+from fastapi import APIRouter, HTTPException, Body
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import logging
-
-from app.database import get_db
-from app.models.car import Car
-from app.models.review import Review
-from app.review_analysis_service import ReviewAnalysisService  # Import the new service
-from app.conversation_history import ConversationHistory  # Assuming this is the conversation manager
+import re
+import json
+import random
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -16,225 +12,420 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize services
+# Simple in-memory conversation history
+class ConversationHistory:
+    def __init__(self):
+        self.history = {}
+    
+    def get_history(self, user_id):
+        if user_id not in self.history:
+            self.history[user_id] = []
+        return self.history[user_id]
+    
+    def add_exchange(self, user_id, user_message, ai_response):
+        if user_id not in self.history:
+            self.history[user_id] = []
+        self.history[user_id].append({
+            "user": user_message,
+            "ai": ai_response
+        })
+        return True
+
+# Initialize conversation manager
 conversation_manager = ConversationHistory()
-review_analyzer = ReviewAnalysisService()
 
-class Message(BaseModel):
-    text: str
-    sender: str
+# Car features and specifications knowledge base
+CAR_FEATURES = {
+    "sedan": [
+        "Four-door design with separate trunk",
+        "Comfortable seating for 5 passengers",
+        "Balanced fuel economy and performance",
+        "Typically more affordable than SUVs"
+    ],
+    "suv": [
+        "Higher ground clearance for better visibility",
+        "Spacious interior with flexible cargo space",
+        "Available in compact, midsize, and full-size options",
+        "Many offer all-wheel drive capabilities",
+        "Ideal for families and outdoor activities"
+    ],
+    "crossover": [
+        "Combines SUV styling with car-like handling",
+        "Better fuel efficiency than traditional SUVs",
+        "More cargo space than sedans",
+        "Comfortable ride and easy maneuverability"
+    ],
+    "pickup": [
+        "Open cargo bed for hauling large items",
+        "High towing capacities",
+        "Available in full-size and midsize options",
+        "Many offer 4x4 capability for off-road use",
+        "Crew cab options provide seating for 5-6 passengers"
+    ],
+    "coupe": [
+        "Sporty two-door design",
+        "Sleek, aerodynamic styling",
+        "Focus on performance and handling",
+        "Usually offers more powerful engine options",
+        "Limited rear passenger space"
+    ],
+    "diesel": [
+        "Higher torque output for improved towing capability",
+        "Better fuel economy on highway driving",
+        "Engines typically last longer than gasoline engines",
+        "Lower RPM operation reduces engine wear",
+        "Improved fuel efficiency on longer trips"
+    ],
+    "hybrid": [
+        "Combines gasoline engine with electric motors",
+        "Improved fuel economy, especially in city driving",
+        "Regenerative braking to recharge batteries",
+        "Reduced emissions compared to conventional engines",
+        "Some models offer electric-only driving mode"
+    ],
+    "electric": [
+        "Zero tailpipe emissions",
+        "Lower operating costs with no gasoline required",
+        "Instant torque for quick acceleration",
+        "Quieter operation than internal combustion engines",
+        "Reduced maintenance with fewer moving parts"
+    ],
+    "awd": [
+        "Power delivered to all four wheels",
+        "Improved traction in slippery conditions",
+        "Better handling and stability on varied terrain",
+        "Enhanced performance in snow and rain",
+        "Typically reduces fuel economy compared to 2WD"
+    ],
+    "safety": [
+        "Advanced driver assistance systems (ADAS)",
+        "Multiple airbags for front and side protection",
+        "Anti-lock braking system (ABS)",
+        "Electronic stability control",
+        "Forward collision warning and automatic emergency braking",
+        "Lane departure warning and lane keeping assistance",
+        "Blind spot monitoring"
+    ],
+    "luxury": [
+        "Premium interior materials (leather, wood, aluminum)",
+        "Advanced infotainment and connectivity features",
+        "Superior sound insulation for quieter cabin",
+        "High-end audio systems",
+        "Heated and ventilated seats",
+        "Customizable ambient lighting",
+        "Advanced climate control systems"
+    ]
+}
 
-class ChatRequest(BaseModel):
-    message: str
-    car_id: Optional[int] = None
-    conversation_history: Optional[List[Message]] = []
+# Engine types information
+ENGINE_INFO = {
+    "v6": "V6 engines offer a good balance of power and fuel efficiency with six cylinders arranged in a V configuration.",
+    "v8": "V8 engines provide high power output with eight cylinders arranged in a V configuration, ideal for larger vehicles and performance applications.",
+    "i4": "Inline-4 (I4) engines are fuel-efficient 4-cylinder engines commonly used in compact and midsize vehicles.",
+    "turbocharged": "Turbocharged engines use exhaust gases to drive a turbine that forces more air into the engine, increasing power output without increasing engine size.",
+    "diesel": "Diesel engines use compression ignition instead of spark ignition, offering higher torque and better fuel economy, especially at highway speeds.",
+    "hybrid": "Hybrid powertrains combine a gasoline engine with one or more electric motors to improve fuel efficiency and reduce emissions.",
+    "electric": "Electric motors provide instant torque, zero emissions, and lower operating costs compared to internal combustion engines."
+}
 
-# Changed route from "/chat" to "/api/chat"
+# Transmission types information
+TRANSMISSION_INFO = {
+    "automatic": "Automatic transmissions shift gears without driver input, offering convenience and ease of use.",
+    "manual": "Manual transmissions require the driver to shift gears using a clutch pedal and gear selector, offering more control and often better fuel economy.",
+    "cvt": "Continuously Variable Transmissions (CVT) provide seamless acceleration without distinct gear shifts, maximizing efficiency.",
+    "dual-clutch": "Dual-clutch transmissions offer faster shifting than traditional automatics by using two separate clutches for odd and even gears.",
+    "8-speed": "8-speed automatic transmissions provide a wide range of gear ratios for improved performance and fuel economy.",
+    "10-speed": "10-speed automatic transmissions offer even more optimal gear ratios for enhanced efficiency and performance."
+}
+
+# Specs explanation
+SPECS_EXPLANATION = {
+    "mpg": "Miles Per Gallon (MPG) measures fuel efficiency - higher numbers mean better economy.",
+    "hp": "Horsepower (HP) measures engine power output - higher numbers indicate more power.",
+    "torque": "Torque measures rotational force, affecting acceleration and towing capability.",
+    "0-60": "0-60 mph time measures acceleration performance - lower numbers indicate faster acceleration.",
+    "cargo": "Cargo capacity measures available storage space, typically in cubic feet or liters.",
+    "towing": "Towing capacity indicates the maximum weight a vehicle can safely tow.",
+    "ground clearance": "Ground clearance is the distance between the lowest point of the vehicle and the ground."
+}
+
+# Quality comments for specific manufacturers
+MANUFACTURER_INSIGHTS = {
+    "bmw": [
+        "BMW is known for its sporty handling and driver-focused experience.",
+        "BMW's vehicles typically offer a good balance of performance and luxury.",
+        "BMW's iDrive infotainment system has evolved to be one of the more intuitive systems.",
+        "BMW diesel engines are known for their torque and efficiency on highway driving."
+    ],
+    "toyota": [
+        "Toyota has built a reputation for reliability and longevity.",
+        "Toyota's hybrid technology pioneered with the Prius has been refined over decades.",
+        "Toyota vehicles typically have good resale value due to their reliability reputation.",
+        "Toyota's safety systems (Toyota Safety Sense) come standard on most models."
+    ],
+    "honda": [
+        "Honda is known for efficient engineering and practical design.",
+        "Honda engines are often praised for their reliability and fuel efficiency.",
+        "Honda vehicles typically offer more interior space than competitors of similar size.",
+        "Honda's CVT transmissions have been refined to reduce the 'rubber band' feeling."
+    ],
+    "ford": [
+        "Ford's F-Series has been America's best-selling truck for over 40 years.",
+        "Ford's EcoBoost engines provide good power while improving fuel economy.",
+        "Ford has invested heavily in both hybrid and all-electric technology.",
+        "Ford's SYNC infotainment system has improved significantly in recent generations."
+    ],
+    "tesla": [
+        "Tesla pioneered long-range electric vehicles with practical everyday usability.",
+        "Tesla's Supercharger network is one of the most extensive fast-charging networks.",
+        "Tesla vehicles receive regular over-the-air updates that add features and improve performance.",
+        "Tesla's minimalist interior design focuses on the central touchscreen interface."
+    ]
+}
+
+# Specific models information
+MODEL_INSIGHTS = {
+    "x5": [
+        "The BMW X5 pioneered the luxury SUV segment when it was introduced in 1999.",
+        "The X5 offers a blend of luxury, technology, and surprising off-road capability.",
+        "X5 diesel models are known for their strong torque and highway fuel efficiency.",
+        "The X5 features BMW's xDrive all-wheel-drive system for enhanced traction."
+    ],
+    "camry": [
+        "The Toyota Camry has been America's best-selling sedan for many years.",
+        "The Camry offers a spacious interior with comfortable seating for five.",
+        "Camry Hybrid models offer exceptional fuel economy without sacrificing performance.",
+        "The Camry's reputation for reliability makes it a popular choice for long-term ownership."
+    ],
+    "f-150": [
+        "The Ford F-150 has been America's best-selling vehicle for over 40 years.",
+        "F-150 models offer a wide range of engine choices and trim levels.",
+        "The aluminum body introduced in 2015 reduced weight and improved fuel economy.",
+        "The F-150's Pro Power Onboard system can provide electrical power for tools and equipment."
+    ],
+    "model 3": [
+        "The Tesla Model 3 is one of the best-selling electric vehicles worldwide.",
+        "The Model 3 offers impressive range and performance at a more accessible price point.",
+        "The minimalist interior features a 15-inch touchscreen that controls most vehicle functions.",
+        "Model 3 Performance variants offer acceleration comparable to high-end sports cars."
+    ]
+}
+
+# Function to classify user queries
+def classify_query(message):
+    message = message.lower()
+    
+    # Define patterns for different query types
+    patterns = {
+        "greeting": r"\b(hello|hi|hey|greetings|good morning|good afternoon|good evening)\b",
+        "farewell": r"\b(bye|goodbye|see you|later|farewell)\b",
+        "features": r"\b(features?|what.*(?:has|includes?|comes? with)|equipped|options?)\b",
+        "specs": r"\b(specs?|specifications?|details|technical|dimensions)\b",
+        "fuel_economy": r"\b(fuel|mpg|mileage|gas|economy|efficient|consumption)\b",
+        "performance": r"\b(performance|0-60|acceleration|speed|fast|quick|horsepower|hp|power|engine)\b",
+        "safety": r"\b(safety|safe|crash|protection|airbags?|assists?)\b",
+        "interior": r"\b(interior|inside|cabin|comfort|seats?|seating|room|space)\b",
+        "exterior": r"\b(exterior|outside|looks?|design|style|appear|colors?)\b",
+        "reliability": r"\b(reliability|reliable|dependable|quality|issues?|problems?|lasting)\b",
+        "comparison": r"\b(compare|comparison|versus|vs\.?|better than|difference)\b",
+        "price": r"\b(price|cost|expensive|cheap|afford|value|worth)\b",
+        "recommendation": r"\b(recommend|should I|worth buying|good choice|suggest)\b",
+        "technology": r"\b(tech|technology|infotainment|connectivity|features|screen|display|entertainment)\b",
+        "opinion": r"\b(what.+think|your opinion|rate|review|thoughts)\b"
+    }
+    
+    # Check patterns
+    matched_types = []
+    for query_type, pattern in patterns.items():
+        if re.search(pattern, message):
+            matched_types.append(query_type)
+    
+    if not matched_types:
+        return ["general"]
+    
+    return matched_types
+
+# Generate detailed response about car features
+def generate_features_response(car_data):
+    manufacturer = car_data.get('manufacturer', '').lower()
+    model = car_data.get('model', '').lower()
+    body_type = car_data.get('body_type', '').lower()
+    year = car_data.get('year', '')
+    engine_info = car_data.get('engine_info', '').lower()
+    
+    response_parts = []
+    
+    # Add introduction
+    response_parts.append(f"The {year} {car_data.get('manufacturer')} {car_data.get('model')} comes with several notable features:")
+    
+    # Add body type features if available
+    if body_type and body_type in CAR_FEATURES:
+        features = random.sample(CAR_FEATURES[body_type], min(3, len(CAR_FEATURES[body_type])))
+        for feature in features:
+            response_parts.append(f"• {feature}")
+    
+    # Add manufacturer insights if available
+    if manufacturer in MANUFACTURER_INSIGHTS:
+        insight = random.choice(MANUFACTURER_INSIGHTS[manufacturer])
+        response_parts.append(f"• {insight}")
+    
+    # Add model insights if available
+    model_key = next((key for key in MODEL_INSIGHTS.keys() if key in model), None)
+    if model_key:
+        insight = random.choice(MODEL_INSIGHTS[model_key])
+        response_parts.append(f"• {insight}")
+    
+    # Add engine insights if available
+    for engine_type, info in ENGINE_INFO.items():
+        if engine_type in engine_info.lower():
+            response_parts.append(f"• {info}")
+            break
+    
+    # Add safety features if we don't have many features yet
+    if len(response_parts) < 5 and "safety" in CAR_FEATURES:
+        safety_feature = random.choice(CAR_FEATURES["safety"])
+        response_parts.append(f"• {safety_feature}")
+    
+    # Add a question to keep the conversation going
+    response_parts.append("\nWould you like to know more about its performance, interior, or safety features?")
+    
+    return "\n".join(response_parts)
+
+# Generate detailed response about fuel economy
+def generate_fuel_economy_response(car_data):
+    mpg = car_data.get('mpg')
+    fuel_type = car_data.get('fuel_type', '').lower()
+    
+    if not mpg:
+        return f"I don't have specific fuel economy data for the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}. Would you like information about its engine or other specifications instead?"
+    
+    response = f"The {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')} has a fuel economy rating of {mpg} MPG."
+    
+    # Add context based on fuel type
+    if "diesel" in fuel_type:
+        response += " Diesel engines typically offer better fuel economy on highway driving and higher torque for towing."
+    elif "hybrid" in fuel_type:
+        response += " As a hybrid vehicle, it achieves this efficiency by combining a gasoline engine with electric motors."
+    elif "electric" in fuel_type:
+        response += " As an electric vehicle, this MPG figure is actually an MPGe (Miles Per Gallon equivalent) rating."
+    else:
+        # Add comparison to average
+        if mpg > 30:
+            response += " This is above average for its class, making it a fuel-efficient option."
+        elif mpg > 25:
+            response += " This is about average for its class."
+        else:
+            response += " While not the most fuel-efficient in its class, it balances fuel economy with performance."
+    
+    return response
+
+# Generate response about specifications
+def generate_specs_response(car_data):
+    response_parts = [f"Here are the key specifications for the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}:"]
+    
+    # Add engine info
+    if car_data.get('engine_info'):
+        response_parts.append(f"• Engine: {car_data.get('engine_info')}")
+    
+    # Add transmission
+    if car_data.get('transmission'):
+        response_parts.append(f"• Transmission: {car_data.get('transmission')}")
+    
+    # Add fuel type
+    if car_data.get('fuel_type'):
+        response_parts.append(f"• Fuel Type: {car_data.get('fuel_type')}")
+    
+    # Add MPG
+    if car_data.get('mpg'):
+        response_parts.append(f"• Fuel Economy: {car_data.get('mpg')} MPG")
+    
+    # Add body type
+    if car_data.get('body_type'):
+        response_parts.append(f"• Body Style: {car_data.get('body_type')}")
+    
+    # Add explanation
+    for spec in SPECS_EXPLANATION:
+        if any(spec in part.lower() for part in response_parts):
+            explanation = SPECS_EXPLANATION[spec]
+            response_parts.append(f"\nNote: {explanation}")
+            break
+    
+    # Add a question to keep the conversation going
+    response_parts.append("\nWhat specific aspect of this vehicle would you like to know more about?")
+    
+    return "\n".join(response_parts)
+
+# Generate a generic response
+def generate_generic_response(car_data, query_type):
+    if query_type == "greeting":
+        return f"Hello! I'm your automotive expert assistant. I have information about the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}. What would you like to know about it?"
+    
+    if query_type == "farewell":
+        return "Thank you for using our automotive assistant. Feel free to return anytime you have more questions about vehicles in our database!"
+    
+    # For any other query type, give a helpful generic response
+    return f"I have detailed information about the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}. You can ask about its features, specifications, fuel economy, performance, or any other aspect you're interested in."
+
 @router.post("/api/chat")
-async def process_chat(request: ChatRequest, db: Session = Depends(get_db)):
-    """Process a chat request by retrieving car data and generating a response."""
+async def process_chat(data: dict = Body(...)):
+    """Process a chat request and generate a response."""
     try:
-        # Retrieve car data if car_id is provided
+        # Extract fields from the request body, with defaults if missing
+        message = data.get("message", "")
+        car_id = data.get("car_id")
+        user_id = data.get("user_id", "default_user")
+        
+        # Log what we received
+        logger.info(f"Received chat request: message='{message}', car_id={car_id}")
+        
+        # Get car data
         car_data = None
-        reviews = []
-        review_analysis = None
+        try:
+            from app.supabase_service import get_car_by_id
+            if car_id:
+                car_data = get_car_by_id(car_id)
+                logger.info(f"Retrieved car data: {car_data}")
+        except Exception as e:
+            logger.warning(f"Could not get car data: {str(e)}")
         
-        if request.car_id:
-            car = db.query(Car).filter(Car.id == request.car_id).first()
-            if not car:
-                return {"response": "I couldn't find information about that car in my database."}
-                
-            # Convert SQLAlchemy model to dictionary
-            car_data = {
-                'id': car.id,
-                'manufacturer': car.manufacturer,
-                'model': car.model,
-                'year': car.year,
-                'engine_info': car.engine_info,
-                'transmission': car.transmission,
-                'fuel_type': car.fuel_type,
-                'mpg': car.mpg,
-                'body_type': car.body_type
-            }
-            
-            # Get reviews for this car
-            reviews_query = db.query(Review).filter(Review.car_id == request.car_id).all()
-            reviews = [
-                {
-                    "id": review.id,
-                    "title": review.review_title,
-                    "text": review.review_text,
-                    "rating": review.rating,
-                    "author": review.author,
-                    "date": review.review_date.isoformat() if review.review_date else None
-                }
-                for review in reviews_query
-            ]
-            
-            # Analyze reviews if available
-            if reviews:
-                review_analysis = review_analyzer.analyze_reviews(reviews)
+        if not car_data and car_id:
+            return {"response": f"I couldn't find information about the car with ID {car_id}. Please try another vehicle."}
         
-        # Get conversation history (user_id assumed to be provided in the request or defaulted)
-        user_id = request.user_id if hasattr(request, 'user_id') else "default_user"
-        history = conversation_manager.get_history(user_id)
+        if not message:
+            return {"response": "I'm not sure what you're asking. Can you provide more details?"}
         
-        # Generate response using the improved function (includes review_analysis now)
-        response = generate_improved_response(
-            request.message, 
-            car_data, 
-            reviews, 
-            history,
-            review_analysis
-        )
+        # Classify the query
+        query_types = classify_query(message)
+        logger.info(f"Classified query as: {query_types}")
+        
+        # Generate response based on query type and car data
+        if car_data:
+            # Handle specific query types
+            if "features" in query_types:
+                response = generate_features_response(car_data)
+            elif "fuel_economy" in query_types:
+                response = generate_fuel_economy_response(car_data)
+            elif "specs" in query_types:
+                response = generate_specs_response(car_data)
+            elif query_types[0] in ["greeting", "farewell"]:
+                response = generate_generic_response(car_data, query_types[0])
+            else:
+                # Default to features for now
+                response = generate_features_response(car_data)
+        else:
+            # No car data available
+            if "greeting" in query_types:
+                response = "Hello! I'm your automotive assistant. How can I help you today?"
+            elif "farewell" in query_types:
+                response = "Goodbye! Feel free to return anytime you have more questions."
+            else:
+                response = "I'm here to provide information about vehicles in our database. Please select a vehicle to learn more about it."
         
         # Save this exchange to history
-        conversation_manager.add_exchange(user_id, request.message, response)
+        conversation_manager.add_exchange(user_id, message, response)
         
-        # Return both the text response and structured data (including category scores and sentiment)
-        return {
-            "response": response,
-            "analysis": review_analysis,
-            "car_data": car_data
-        }
+        return {"response": response}
         
     except Exception as e:
         logger.error(f"Chat processing error: {str(e)}")
-        return {"response": "I encountered an error while processing your request. Please try again."}
-
-def generate_improved_response(
-    user_message: str, 
-    car_data: Optional[Dict] = None, 
-    reviews: Optional[List] = None, 
-    conversation_history: Optional[List] = None,
-    review_analysis: Optional[Dict] = None
-):
-    """
-    Generate a more sophisticated response based on a better understanding of user intent.
-    Now includes review analysis data such as category scores and sentiment.
-    """
-    # Convert message to lowercase for easier matching
-    user_message_lower = user_message.lower()
-    
-    # Define basic intents with associated keywords
-    intent_patterns = {
-        'greeting': ['hello', 'hi', 'hey', 'greetings'],
-        'farewell': ['bye', 'goodbye', 'see you', 'thanks'],
-        'spec_inquiry': ['mpg', 'gas', 'fuel', 'economy', 'engine', 'power', 'performance', 'transmission', 'horsepower', 'acceleration', 'top speed'],
-        'comfort_inquiry': ['comfort', 'interior', 'seats', 'space', 'legroom', 'cabin', 'noise'],
-        'reliability_inquiry': ['reliable', 'reliability', 'problems', 'issues', 'maintenance', 'repair'],
-        'value_inquiry': ['price', 'cost', 'worth', 'value', 'expensive', 'cheap', 'affordable'],
-        'comparison': ['compare', 'vs', 'versus', 'better than', 'worse than', 'difference'],
-        'recommendation': ['recommend', 'should i', 'good choice', 'worth buying', 'suggest'],
-        'pros_cons_inquiry': ['pros', 'cons', 'advantages', 'disadvantages', 'benefits', 'drawbacks'],
-        'general_opinion': ['good', 'bad', 'like', 'opinion', 'review', 'think', 'feel']
-    }
-    
-    # Determine the primary intent
-    detected_intent = 'unknown'
-    max_matches = 0
-    for intent, keywords in intent_patterns.items():
-        matches = sum(1 for keyword in keywords if keyword in user_message_lower)
-        if matches > max_matches:
-            max_matches = matches
-            detected_intent = intent
-    
-    # If we don't have car data but the intent is specific, ask for details
-    if car_data is None and detected_intent not in ['greeting', 'farewell', 'unknown']:
-        return "I'd be happy to help with that. Which specific car model are you interested in?"
-    
-    # With car data available, craft specific responses
-    if car_data:
-        car_name = f"{car_data['year']} {car_data['manufacturer']} {car_data['model']}"
-        
-        if detected_intent == 'spec_inquiry':
-            if any(term in user_message_lower for term in ['mpg', 'gas', 'fuel', 'economy']):
-                if car_data.get('mpg'):
-                    rating = ""
-                    if car_data['mpg'] > 30:
-                        rating = " That's excellent for its class."
-                    elif car_data['mpg'] > 25:
-                        rating = " That's about average for its class."
-                    else:
-                        rating = " That's below average for its class."
-                    return f"The {car_name} has a fuel economy rating of {car_data['mpg']} MPG.{rating} Would you like to know about its engine or transmission as well?"
-                else:
-                    return f"I don't have fuel economy data for the {car_name}. Would you like to know about other specifications instead?"
-            elif any(term in user_message_lower for term in ['engine', 'power', 'performance', 'horsepower']):
-                if car_data.get('engine_info'):
-                    return f"The {car_name} comes with a {car_data['engine_info']} engine, offering a good balance of power and efficiency. Is there anything specific about the engine you'd like to know?"
-                else:
-                    return f"I don't have detailed engine specifications for the {car_name}. Would you like to know about other features?"
-            elif 'transmission' in user_message_lower:
-                if car_data.get('transmission'):
-                    return f"The {car_name} features a {car_data['transmission']} transmission, providing smooth shifting and responsiveness. Would you like to know more about the driving experience?"
-                else:
-                    return f"I don't have transmission information for the {car_name}. Is there something else you'd like to know?"
-        
-        elif detected_intent == 'pros_cons_inquiry':
-            if review_analysis and (review_analysis.get('common_pros') or review_analysis.get('common_cons')):
-                pros = review_analysis.get('common_pros', [])
-                cons = review_analysis.get('common_cons', [])
-                pros_text = "Key advantages include: " + ", ".join(pros) + "." if pros else ""
-                cons_text = "Areas for improvement include: " + ", ".join(cons) + "." if cons else ""
-                return f"Based on owner reviews of the {car_name}, I've identified some common pros and cons. {pros_text} {cons_text} Would you like more details?"
-            else:
-                return f"I don't have enough review data to identify specific pros and cons for the {car_name}. Would you like to know about its specifications instead?"
-        
-        elif detected_intent == 'general_opinion':
-            if review_analysis and review_analysis.get('average_rating') is not None:
-                avg_rating = review_analysis['average_rating']
-                sentiment = review_analysis.get('sentiment', {})
-                rating_description = (
-                    "excellent" if avg_rating >= 4.5 else "very good" if avg_rating >= 4.0
-                    else "good" if avg_rating >= 3.5 else "average" if avg_rating >= 3.0
-                    else "below average" if avg_rating >= 2.5 else "poor"
-                )
-                total_reviews = sum(sentiment.values())
-                positive_percent = round((sentiment.get('positive', 0) / total_reviews) * 100) if total_reviews > 0 else 0
-                category_scores = review_analysis.get('category_scores', {})
-                highest_category = max(category_scores.items(), key=lambda x: x[1], default=(None, 0))
-                lowest_category = min(category_scores.items(), key=lambda x: x[1], default=(None, 5))
-                category_text = ""
-                if highest_category[0] and lowest_category[0]:
-                    highest_name = highest_category[0].replace('_', ' ').title()
-                    lowest_name = lowest_category[0].replace('_', ' ').title()
-                    category_text = f" Owners rate its {highest_name} at {highest_category[1]}/5, while {lowest_name} scored {lowest_category[1]}/5."
-                return f"The {car_name} has an overall rating of {avg_rating:.1f}/5 ({rating_description}) based on {total_reviews} reviews, with {positive_percent}% positive feedback.{category_text} Would you like more details?"
-            elif reviews and len(reviews) > 0:
-                avg_rating = sum(review.get('rating', 0) for review in reviews) / len(reviews)
-                return f"Based on {len(reviews)} reviews, the {car_name} has an average rating of {avg_rating:.1f}/5. Would you like a detailed summary of the reviews?"
-            else:
-                return f"I don't have any review data for the {car_name} yet. Would you like to know about its specifications instead?"
-                
-        elif detected_intent == 'recommendation':
-            recommendation = ""
-            if review_analysis and review_analysis.get('average_rating') is not None:
-                avg_rating = review_analysis['average_rating']
-                if avg_rating >= 4.0:
-                    recommendation = f"Based on an excellent average rating of {avg_rating:.1f}/5, the {car_name} is highly recommended by owners."
-                elif avg_rating >= 3.5:
-                    recommendation = f"With a good average rating of {avg_rating:.1f}/5, the {car_name} is generally recommended."
-                else:
-                    recommendation = f"With an average rating of {avg_rating:.1f}/5, the {car_name} receives mixed reviews."
-                category_scores = review_analysis.get('category_scores', {})
-                if category_scores:
-                    highest_category = max(category_scores.items(), key=lambda x: x[1], default=(None, 0))
-                    if highest_category[0]:
-                        highest_name = highest_category[0].replace('_', ' ').title()
-                        recommendation += f" It's particularly strong in {highest_name} with a score of {highest_category[1]}/5."
-            elif car_data.get('mpg', 0) > 30:
-                recommendation = f"If fuel economy is key, the {car_name} is an excellent choice with {car_data.get('mpg')} MPG."
-            else:
-                recommendation = f"The {car_name} is a solid choice with its {car_data.get('engine_info', 'modern engine')} and {car_data.get('transmission', 'responsive transmission')}."
-            return f"{recommendation} What aspects are most important for you?"
-        
-        return f"The {car_name} is a {car_data.get('body_type', 'vehicle')} with a {car_data.get('engine_info', 'modern engine')}, featuring a {car_data.get('transmission', 'smooth transmission')} and running on {car_data.get('fuel_type', 'fuel')}. What would you like to know more about?"
-    
-    if detected_intent == 'greeting':
-        return "Hello! I'm your automotive assistant. How can I help with your car-related questions today?"
-        
-    if detected_intent == 'farewell':
-        return "Thanks for chatting! Feel free to return anytime you have more questions."
-        
-    return "I'm here to answer your car-related questions. What would you like to know about?"
+        return {"response": f"I apologize, but I encountered an error while processing your request. Please try again with a different question."}
