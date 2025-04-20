@@ -11,8 +11,11 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import json
 from datetime import datetime
+from backend.app.enhanced_chat_controller_hybrid import router as chat_router
+app = FastAPI()
 
-# Load environment variables
+# Add the enhanced router
+app.include_router(chat_router)
 load_dotenv()
 
 # Import Supabase service methods (now contains in-memory fallback)
@@ -30,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
+app.include_router(chat_router)
 # Define request model
 class GenerateReviewRequest(BaseModel):
     car_id: int
