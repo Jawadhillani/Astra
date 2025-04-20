@@ -11,9 +11,10 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import json
 from datetime import datetime
-from backend.app.enhanced_chat_controller_hybrid import router as chat_router
+from fastapi import FastAPI
+from app.enhanced_chat_controller_hybrid import router as chat_router
 app = FastAPI()
-
+app.include_router(chat_router, prefix="/api/chat")
 # Add the enhanced router
 app.include_router(chat_router)
 load_dotenv()
