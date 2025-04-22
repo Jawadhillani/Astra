@@ -1,13 +1,7 @@
-# model_router.py
-"""
-Core router that directs queries between different LLM backends.
-This forms the foundation of the hybrid model approach.
-"""
-
 import logging
 import time
-from typing import Dict, Any, Optional, List
 import re
+from typing import Dict, Any, Optional, List
 
 # Imports with explicit relative paths for our modules
 from .query_classifier import QueryClassifier
@@ -16,221 +10,219 @@ from .automotive_system_message import create_automotive_system_message
 
 logger = logging.getLogger(__name__)
 
+
 class ModelRouter:
-    """
-    Routes queries between OpenAI and local LLM models based on query classification.
-    """
-    def __init__(self, openai_client: Any, local_llm_client: Any = None):
+    """Route queries between OpenAI and a local LLM (Ollama)."""
+
+    # ------------------------------------------------------------------
+    # Initialisation
+    # ------------------------------------------------------------------
+    def __init__(self, openai_client: Any, local_llm_client: Any | None = None) -> None:
         self.openai_client = openai_client
         self.local_llm_client = local_llm_client
         self.query_classifier = QueryClassifier()
         self.response_analyzer = ResponseAnalyzer()
-        self.force_model = None
-        
+        self.force_model: str | None = None
+
         # Configuration
-        self.config = {
+        self.config: dict[str, Any] = {
             "openai_timeout": 15,
             "local_timeout": 30,
             "min_confidence": 0.6,
             "max_retries": 2,
-            "use_streaming": False
+            "use_streaming": False,
         }
-        
-        # Performance metrics
-        self.metrics = {
+
+        # Metrics
+        self.metrics: dict[str, float | int] = {
             "openai_requests": 0,
             "local_requests": 0,
             "fallbacks": 0,
-            "avg_openai_time": 0,
-            "avg_local_time": 0
+            "avg_openai_time": 0.0,
+            "avg_local_time": 0.0,
         }
 
-    def route_query(self,
-                    query: str,
-                    car_data: Optional[Dict] = None,
-                    conversation_history: Optional[List] = None) -> Dict[str, Any]:
-        """Route with better fallback."""
-        start_time = time.time()
-        
-        # Step 1: Classify the query
-        classification = self.query_classifier.classify(query, car_data)
-        logger.info(f"Query classified as {classification['query_types']} with confidence {classification['confidence']}")
-        
-        # Step 2: Determine which model to use
-        model_choice = self._choose_model(classification, car_data)
-        logger.info(f"Routing to model: {model_choice}")
-        
-        # Step 3: Try primary model with reduced timeout for better UX
-        response = None
-        local_model_available = self.local_llm_client is not None
-        
-        try:
-            if model_choice == "local" and local_model_available:
-                response = self._try_local_model(query, classification, car_data, conversation_history)
-            else:
-                response = self._try_openai_model(query, classification, car_data, conversation_history)
-        except Exception as e:
-            logger.error(f"Error from primary model ({model_choice}): {str(e)}")
-            # Try fallback model
-            try:
-                if model_choice == "local" and self.openai_client:
-                    logger.info("Falling back to OpenAI due to local model error")
-                    self.metrics["fallbacks"] += 1
-                    response = self._try_openai_model(query, classification, car_data, conversation_history)
-                elif model_choice == "openai" and local_model_available:
-                    logger.info("Falling back to local model due to OpenAI error")
-                    self.metrics["fallbacks"] += 1
-                    response = self._try_local_model(query, classification, car_data, conversation_history)
-            except Exception as fallback_error:
-                logger.error(f"Fallback model also failed: {str(fallback_error)}")
-                # If both models fail, create a graceful failure response
-                response = {
-                    "response": "I'm having difficulty processing that query right now. Could you try asking about something more specific about this car?",
-                    "model": "error",
-                    "analysis": {
-                        "sentiment": {"neutral": 1},
-                        "common_pros": [],
-                        "common_cons": []
-                    }
-                }
-        
-        # Total response time
-        end_time = time.time()
-        response_time = end_time - start_time
-        
-        # Add metadata to response
-        final_response = {
-            "response": response["response"],
-            "model_used": response.get("model", model_choice),
-            "confidence": classification["confidence"],
-            "query_types": classification["query_types"],
-            "response_time": response_time,
-            "analysis": response.get("analysis", {})
-        }
-        
-        logger.info(f"Response generated in {response_time:.2f} seconds using {final_response['model_used']} model")
-        return final_response
-
-    def set_force_model(self, model_name: Optional[str]):
-        """
-        Force all queries to use a specific model: 'openai', 'local', or None.
-        """
-        if model_name not in ['openai', 'local', None]:
+    # ------------------------------------------------------------------
+    # Public helpers
+    # ------------------------------------------------------------------
+    def set_force_model(self, model_name: str | None) -> None:
+        if model_name not in {"openai", "local", None}:
             raise ValueError("Model must be 'openai', 'local', or None")
         self.force_model = model_name
-        logger.info(f"Force model set to: {model_name}")
+        logger.info("Force model set to %s", model_name)
 
-    def _choose_model(self, classification: Dict[str, Any], car_data: Optional[Dict]) -> str:
-        """
-        Decide between 'local' or 'openai' based on classification and config.
-        """
+    def get_metrics(self) -> dict[str, Any]:
+        return self.metrics.copy()
+
+    # ------------------------------------------------------------------
+    # Core routing
+    # ------------------------------------------------------------------
+    def route_query(
+        self,
+        query: str,
+        car_data: Optional[dict] = None,
+        conversation_history: Optional[List[str]] = None,
+    ) -> dict[str, Any]:
+        start_time = time.time()
+
+        # 1) classify
+        classification = self.query_classifier.classify(query, car_data)
+        logger.info(
+            "Query classified as %s (confidence %.2f)",
+            classification["query_types"],
+            classification["confidence"],
+        )
+
+        # 2) choose model
+        model_choice = self._choose_model()
+        logger.info("Routing to model: %s", model_choice)
+
+        try:
+            if model_choice == "local" and self.local_llm_client:
+                response = self._try_local_model(query, car_data, conversation_history)
+            else:
+                response = self._try_openai_model(query, car_data, conversation_history)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Primary model (%s) failed: %s", model_choice, exc)
+            response = self._fallback(model_choice, query, car_data, conversation_history)
+
+        elapsed = time.time() - start_time
+        return {
+            "response": response["response"],
+            "model_used": response["model"],
+            "confidence": classification["confidence"],
+            "query_types": classification["query_types"],
+            "response_time": elapsed,
+            "analysis": response.get("analysis", {}),
+        }
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _choose_model(self) -> str:
         if self.force_model:
             return self.force_model
-        if not self.local_llm_client:
+        if self.openai_client:
             return "openai"
-        if classification.get("routing_category") == "automotive_specific" and classification.get("confidence", 0) >= self.config["min_confidence"]:
-            return "local"
-        if classification.get("routing_category") == "automotive_contextual" and car_data:
+        if self.local_llm_client:
             return "local"
         return "openai"
 
-    def _try_local_model(self,
-                         query: str,
-                         classification: Dict[str, Any],
-                         car_data: Optional[Dict],
-                         conversation_history: Optional[List]) -> Dict[str, Any]:
-        """
-        Generate a response using the local LLM.
-        """
+    def _fallback(
+        self,
+        failed_model: str,
+        query: str,
+        car_data: Optional[dict],
+        conversation_history: Optional[List[str]],
+    ) -> dict[str, Any]:
+        self.metrics["fallbacks"] += 1
+        if failed_model == "openai" and self.local_llm_client:
+            logger.info("Falling back to local model")
+            return self._try_local_model(query, car_data, conversation_history)
+        if failed_model == "local" and self.openai_client:
+            logger.info("Falling back to OpenAI model")
+            return self._try_openai_model(query, car_data, conversation_history)
+        return {
+            "response": "Sorry, I'm having trouble right now. Please try again soon!",
+            "model": "error",
+            "analysis": {"sentiment": {"neutral": 1}},
+        }
+
+    # ------------------------------------------------------------------
+    # Model wrappers
+    # ------------------------------------------------------------------
+    def _try_local_model(
+        self,
+        query: str,
+        car_data: Optional[dict],
+        conversation_history: Optional[List[str]],
+    ) -> dict[str, Any]:
         if not self.local_llm_client:
-            raise Exception("Local LLM client not initialized")
+            raise RuntimeError("Local LLM client not configured")
+
         self.metrics["local_requests"] += 1
-        start_time = time.time()
+        start = time.time()
 
         system_prompt = create_automotive_system_message(car_data)
-
-        # Build conversation context
-        context = ""
-        if conversation_history:
-            recent = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
-            for i in range(0, len(recent), 2):
-                if i+1 < len(recent):
-                    context += f"Human: {recent[i]}\nAssistant: {recent[i+1]}\n\n"
-
-        # Construct prompt
-        if car_data:
-            full_prompt = f"""
-Human: I want to know about the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')} with {car_data.get('engine_info')}.
-
-Specifically: {query}
-"""
-        else:
-            full_prompt = f"{context}Human: {query}\nAssistant:" if context else f"Human: {query}\nAssistant:"
+        user_prompt = (
+            f"About the {car_data.get('year')} {car_data.get('manufacturer')} {car_data.get('model')}: {query}\nAnswer:"
+            if car_data
+            else f"Human: {query}\nAssistant:"
+        )
 
         result = self.local_llm_client.generate_response(
-            prompt=full_prompt,
+            prompt=user_prompt,
             system_prompt=system_prompt,
             temperature=0.7,
-            max_tokens=500
+            max_tokens=400,
         )
-        response_text = re.sub(r"^(\s*Assistant:?\s*)", "", result.get("text", ""))
+        if result.get("error"):
+            raise RuntimeError(f"Local LLM error: {result['text']}")
 
-        elapsed = time.time() - start_time
-        if self.metrics["avg_local_time"] == 0:
-            self.metrics["avg_local_time"] = elapsed
-        else:
-            self.metrics["avg_local_time"] = (self.metrics["avg_local_time"] * (self.metrics["local_requests"] - 1) + elapsed) / self.metrics["local_requests"]
+        response_text = re.sub(r"^(\s*Assistant:?\s*)", "", result.get("text", "")).strip()
 
+        self._update_avg("avg_local_time", "local_requests", time.time() - start)
         analysis = self.response_analyzer.analyze(response_text, car_data)
         return {"response": response_text, "model": "local", "analysis": analysis}
 
-    def _try_openai_model(self,
-                          query: str,
-                          classification: Dict[str, Any],
-                          car_data: Optional[Dict],
-                          conversation_history: Optional[List]) -> Dict[str, Any]:
-        """
-        Try generating a response with the OpenAI model.
-        """
-        start_time = time.time()
-        self.metrics["openai_requests"] += 1
+    def _try_openai_model(
+        self,
+        query: str,
+        car_data: Optional[dict],
+        conversation_history: Optional[List[str]],
+    ) -> dict[str, Any]:
+        if not self.openai_client:
+            raise RuntimeError("OpenAI client not configured")
 
+        self.metrics["openai_requests"] += 1
+        start = time.time()
+
+        # Build system message and style guide
         system_message = create_automotive_system_message(car_data)
-        messages = [{"role": "system", "content": system_message}]
+        style_guide = (
+            "\n\n### Style Guide ###\n"
+            "- Talk like an excited best‑buddy mechanic 😎🛠️.\n"
+            "- Max **3 punchy sentences** (~90 tokens).\n"
+            "- Fun slang, exclamations, rhetorical questions!\n"
+            "- Sprinkle 2–4 fitting emojis.\n"
+            "- End with a cheeky invite like 'Hop in?'."
+        )
+        system_message += style_guide
+
+        messages: list[dict[str, str]] = [{"role": "system", "content": system_message}]
         if conversation_history:
             recent = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
             for i in range(0, len(recent), 2):
-                if i < len(recent): messages.append({"role": "user", "content": recent[i]})
-                if i+1 < len(recent): messages.append({"role": "assistant", "content": recent[i+1]})
+                messages.append({"role": "user", "content": recent[i]})
+                if i + 1 < len(recent):
+                    messages.append({"role": "assistant", "content": recent[i + 1]})
         messages.append({"role": "user", "content": query})
 
         try:
-            response = self.openai_client.chat.completions.create(
+            resp = self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
-                temperature=0.7,
-                max_tokens=1000,
-                timeout=self.config["openai_timeout"]
+                temperature=0.95,
+                max_tokens=250,
+                timeout=self.config["openai_timeout"],
+                top_p=0.9,
+                presence_penalty=0.3,
             )
-            response_text = response.choices[0].message.content
-        except Exception as e:
-            if "429" in str(e) or "quota" in str(e).lower():
-                logger.warning("OpenAI quota exceeded, using local model as primary")
-                self.metrics["fallbacks"] += 1
-                return self._try_local_model(query, classification, car_data, conversation_history)
-            else:
-                logger.error(f"OpenAI error: {e}")
-                raise
+            response_text = resp.choices[0].message.content.strip()
+        except Exception as exc:  # noqa: BLE001
+            if "429" in str(exc) or "quota" in str(exc).lower():
+                logger.warning("OpenAI quota hit; falling back to local model")
+                return self._fallback("openai", query, car_data, conversation_history)
+            raise
 
-        elapsed = time.time() - start_time
-        if self.metrics["avg_openai_time"] == 0:
-            self.metrics["avg_openai_time"] = elapsed
-        else:
-            self.metrics["avg_openai_time"] = (self.metrics["avg_openai_time"] * (self.metrics["openai_requests"] - 1) + elapsed) / self.metrics["openai_requests"]
-
+        self._update_avg("avg_openai_time", "openai_requests", time.time() - start)
         analysis = self.response_analyzer.analyze(response_text, car_data)
         return {"response": response_text, "model": "openai", "analysis": analysis}
 
-    def get_metrics(self) -> Dict[str, Any]:
-        """Return performance metrics."""
-        return self.metrics.copy()
+    # ------------------------------------------------------------------
+    # Utility
+    # ------------------------------------------------------------------
+    def _update_avg(self, avg_key: str, count_key: str, new_time: float) -> None:
+        count = self.metrics[count_key]
+        prev_avg = self.metrics[avg_key]
+        self.metrics[avg_key] = new_time if count == 0 else (prev_avg * (count - 1) + new_time) / count
