@@ -1,438 +1,229 @@
-# app/openai_service.py
-from dotenv import load_dotenv
-import os
-import json
-import random
-import logging
-import datetime
-from typing import Dict, List, Optional, Any
+from __future__ import annotations
+"""OpenAI‑powered (or mocked) car‑review generator.
 
-# Setup logging
+**This file is the fully fixed `openai_service.py`.**  It eliminates the
+previous syntax error, enforces strict JSON output from OpenAI, and contains a
+concise mock fallback. Replace your local copy with this content.
+"""
+
+# ---------------------------------------------------------------------------
+# Imports & setup
+# ---------------------------------------------------------------------------
+import datetime
+import json
+import logging
+import os
+import random
+from typing import Any, Dict, List
+
+from dotenv import load_dotenv
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
 load_dotenv()
+OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+USE_MOCK: bool = not bool(OPENAI_API_KEY)
 
-# Get OpenAI API key
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-USE_MOCK = True if not OPENAI_API_KEY else False
-
-# Try to import OpenAI library
 try:
-    import openai
-    # Create OpenAI client if API key exists
+    import openai  # type: ignore
+
     if not USE_MOCK:
         try:
             client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            logger.info("Successfully initialized OpenAI client")
-        except Exception as e:
-            logger.error(f"Error initializing OpenAI client: {e}")
+            logger.info("OpenAI client initialised ✅")
+        except Exception as exc:
+            logger.error("Failed to initialise OpenAI client: %s", exc)
             USE_MOCK = True
+            client = None
     else:
-        logger.warning("No OpenAI API key found, using mock response mode")
+        logger.warning("OPENAI_API_KEY not set – using mock mode ✨")
         client = None
 except ImportError:
-    logger.warning("OpenAI library not installed, using mock response mode")
+    logger.warning("openai package missing – using mock mode ✨")
     USE_MOCK = True
     client = None
 
-def generate_car_review(car_data: Dict[str, Any]) -> Optional[str]:
-    """
-    Generate a detailed car review using OpenAI's API or a mock response.
-    
-    Returns a JSON string with the review content.
-    """
-    # Validate car data
-    if not car_data or not isinstance(car_data, dict):
-        logger.error(f"Invalid car data provided: {car_data}")
+# ---------------------------------------------------------------------------
+# Public function
+# ---------------------------------------------------------------------------
+
+def generate_car_review(car_data: Dict[str, Any]) -> str:
+    """Return a **JSON string** review of `car_data` (guaranteed JSON)."""
+    if not isinstance(car_data, dict):
         return json.dumps({
             "review_title": "Error: Invalid Car Data",
             "rating": 0,
-            "review_text": "Unable to generate review due to missing or invalid car data.",
+            "review_text": "Unable to generate review due to invalid car data.",
             "author": "System",
             "pros": [],
-            "cons": []
+            "cons": [],
         })
-    
-    # Log the actual car we're reviewing to aid debugging
-    car_info = f"{car_data.get('year', 'Unknown')} {car_data.get('manufacturer', 'Unknown')} {car_data.get('model', 'Unknown')}"
-    logger.info(f"Attempting to generate review for: {car_info} (ID: {car_data.get('id', 'Unknown')})")
-    
+
     if USE_MOCK:
-        logger.info(f"Using mock review generator for: {car_info}")
-        return generate_mock_review(car_data)
-        
+        return _mock_review(car_data)
+
+    prompt = _build_prompt(car_data)
     try:
-        prompt = f"""
-        Write a detailed car review for a {car_data['year']} {car_data['manufacturer']} {car_data['model']}.
-        
-        Technical Specifications:
-        - Engine: {car_data.get('engine_info', 'N/A')}
-        - Transmission: {car_data.get('transmission', 'N/A')}
-        - Fuel Type: {car_data.get('fuel_type', 'N/A')}
-        - MPG: {car_data.get('mpg', 'N/A')}
-        - Body Type: {car_data.get('body_type', 'N/A')}
-        
-        Write a thorough review that includes:
-        1. A descriptive title
-        2. Overall rating (1-5 stars)
-        3. A comprehensive evaluation of the car's performance
-        4. Specific mentions of the technical features
-        5. Personal driving experience
-        6. Value for money assessment
-        7. Clear lists of pros and cons (at least 3-5 of each)
-        
-        Make the review balanced, highlighting both strengths and weaknesses.
-        
-        Format the response as JSON with these fields:
-        - review_title: a catchy title for the review
-        - rating: number between 1-5 with one decimal point
-        - review_text: detailed review text, around 300-500 words
-        - author: an automotive expert name
-        - pros: an array of strings, each describing a positive aspect of the car
-        - cons: an array of strings, each describing a negative aspect of the car
-        """
-        
-        # Using the new OpenAI API format
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an experienced automotive journalist with 20 years of experience reviewing cars. You provide detailed, honest, and technically accurate reviews that highlight both strengths and weaknesses."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1500
-            )
-            
-            # Extract content from the response
-            content = response.choices[0].message.content
-            logger.info(f"Successfully generated review with OpenAI for: {car_info}")
-            return content
-        except Exception as e:
-            logger.error(f"Error in OpenAI API call: {e}")
-            logger.info(f"Falling back to mock review for: {car_info}")
-            return generate_mock_review(car_data)
-            
-    except Exception as e:
-        logger.error(f"Error generating review with OpenAI: {e}")
-        # Fall back to mock review
-        logger.info(f"Falling back to mock review due to error for: {car_info}")
-        return generate_mock_review(car_data)
+        response = client.chat.completions.create(  # type: ignore[attr-defined]
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an automotive journalist with 20+ years of experience. "
+                        "Provide balanced, technically accurate reviews. "
+                        "ALWAYS return valid JSON – no markdown, no code fencing."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=1500,
+        )
+        raw = response.choices[0].message.content.strip()  # type: ignore[index]
+        cleaned = _strip_md_fence(raw)
+        if _valid_json(cleaned):
+            return cleaned
+        import re
+        match = re.search(r"\{[\s\S]*?\}", cleaned)
+        if match and _valid_json(match.group(0)):
+            return match.group(0)
+    except Exception as exc:
+        logger.error("OpenAI error: %s", exc)
+    # Fallback if anything went wrong
+    return _mock_review(car_data)
 
-# Modified generate_mock_review function for shorter reviews
-def generate_mock_review(car_data: Dict[str, Any]) -> str:
-    """Generate a concise mock review with structured pros and cons."""
-    # Ensure we have valid car data
-    if not car_data or not isinstance(car_data, dict):
-        car_data = {
-            'year': 'Unknown',
-            'manufacturer': 'Unknown',
-            'model': 'Unknown',
-            'body_type': 'vehicle',
-            'engine_info': 'engine',
-            'transmission': 'transmission',
-            'fuel_type': 'fuel',
-            'mpg': 0
-        }
-    
-    # Log what we're actually reviewing
-    car_info = f"{car_data.get('year', 'Unknown')} {car_data.get('manufacturer', 'Unknown')} {car_data.get('model', 'Unknown')}"
-    logger.info(f"Generating concise mock review for: {car_info}")
-    
-    # Sample author names
-    authors = [
-        "Michael Thompson", "Sarah Johnson", "James Rodriguez", "Emma Davis",
-        "Robert Chen", "Lisa Patel", "David Wilson", "Maria Garcia"
-    ]
-    
-    # Determine review sentiment similar to before, but simplified
-    sentiment = determine_sentiment(car_data)
-    
-    # Create a rating based on sentiment
-    if sentiment == "positive":
-        rating = round(random.uniform(4.0, 4.8), 1)
-    elif sentiment == "neutral":
-        rating = round(random.uniform(3.0, 3.9), 1)
-    else:  # negative
-        rating = round(random.uniform(1.8, 2.9), 1)
-    
-    # Shortened title options based on sentiment
-    if sentiment == "positive":
-        titles = [
-            f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']}: A Solid Choice",
-            f"Impressive: {car_data['year']} {car_data['manufacturer']} {car_data['model']}",
-            f"{car_data['year']} {car_data['manufacturer']} {car_data['model']} - Worth Your Attention"
-        ]
-    elif sentiment == "neutral":
-        titles = [
-            f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']}: Mixed Results",
-            f"Middle Ground: {car_data['year']} {car_data['manufacturer']} {car_data['model']}",
-            f"{car_data['year']} {car_data['manufacturer']} {car_data['model']} - Has Potential"
-        ]
-    else:  # negative
-        titles = [
-            f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']}: Room for Improvement",
-            f"Disappointing: {car_data['year']} {car_data['manufacturer']} {car_data['model']}",
-            f"{car_data['year']} {car_data['manufacturer']} {car_data['model']} - Look Elsewhere"
-        ]
-    
-    # Get car details with sensible defaults
-    car_body_type = car_data.get('body_type', 'vehicle')
-    car_engine = car_data.get('engine_info', 'standard engine')
-    car_mpg = car_data.get('mpg', 'competitive')
-    
-    # Generate a concise review text based on sentiment
-    # Just two paragraphs: overview and conclusion
-    paragraphs = []
-    
-    # Overview paragraph (shortened)
-    if sentiment == "positive":
-        paragraphs.append(f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']} stands out in the {car_body_type} category with its {car_engine} providing strong performance while achieving {car_mpg} MPG. The ride quality, handling, and interior comfort are all above average for its class. Technology features are intuitive and add significant value to the overall package.")
-    elif sentiment == "neutral":
-        paragraphs.append(f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']} offers adequate performance for a {car_body_type}, with its {car_engine} providing sufficient power for daily driving while returning {car_mpg} MPG. The ride quality and interior are satisfactory though unremarkable, and the technology features cover the basics without particularly impressing.")
-    else:  # negative
-        paragraphs.append(f"The {car_data['year']} {car_data['manufacturer']} {car_data['model']} falls short in the {car_body_type} segment. Its {car_engine} feels underpowered despite modest {car_mpg} MPG efficiency. The ride quality is compromised, interior materials disappoint, and the technology package lags behind competitors in both features and usability.")
-    
-    # Conclusion paragraph with rating (shortened)
-    if sentiment == "positive":
-        paragraphs.append(f"Overall, the {car_data['model']} earns a {rating}/5 rating. It excels in [performance/comfort/value] and offers a compelling package for buyers in this segment. While no vehicle is perfect, the few minor drawbacks are easily outweighed by its strengths.")
-    elif sentiment == "neutral":
-        paragraphs.append(f"With a {rating}/5 rating, the {car_data['model']} represents a middle-of-the-road option. It's worth consideration if you prioritize [specific strength], though competitors may offer better options depending on your specific needs and priorities.")
-    else:  # negative
-        paragraphs.append(f"I give the {car_data['model']} a {rating}/5 rating. Despite [minor positive aspect], its significant shortcomings in [key areas] make it difficult to recommend when more compelling options exist at similar price points.")
-    
-    # Combine paragraphs (just two now)
-    review_text = "\n\n".join(paragraphs)
-    
-    # Generate pros and cons - keep these as they're valuable
-    pros = generate_pros(car_data, sentiment)
-    cons = generate_cons(car_data, sentiment)
-    
-    # Create a JSON response
-    mock_review = {
-        "review_title": random.choice(titles),
+# ---------------------------------------------------------------------------
+# Prompt builder & markdown clean‑ups
+# ---------------------------------------------------------------------------
+
+def _build_prompt(cd: Dict[str, Any]) -> str:
+    return f"""
+Write a detailed car review for a {cd.get('year')} {cd.get('manufacturer')} {cd.get('model')}.
+
+Technical Specs:
+- Engine: {cd.get('engine_info', 'N/A')}
+- Transmission: {cd.get('transmission', 'N/A')}
+- Fuel: {cd.get('fuel_type', 'N/A')}
+- MPG: {cd.get('mpg', 'N/A')}
+- Body Type: {cd.get('body_type', 'N/A')}
+
+Include:
+1. A catchy title.
+2. Overall rating (1‑5, one decimal).
+3. Performance & tech evaluation.
+4. Personal impressions & value assessment.
+5. Pros & Cons lists (≥3 each).
+
+Return **VALID JSON ONLY** (no markdown fences) with keys:
+review_title, rating, review_text, author, pros, cons
+"""
+
+
+def _strip_md_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    capture = False
+    for ln in lines:
+        if ln.startswith("```json"):
+            capture = True
+            continue
+        if ln.startswith("```") and capture:
+            break
+        if capture:
+            out.append(ln)
+    return "\n".join(out).strip() or text
+
+
+def _valid_json(s: str) -> bool:
+    try:
+        json.loads(s)
+        return True
+    except json.JSONDecodeError:
+        return False
+
+# ---------------------------------------------------------------------------
+# Mock review (offline or fallback)
+# ---------------------------------------------------------------------------
+
+def _mock_review(cd: Dict[str, Any]) -> str:
+    defaults = {
+        "year": "2020",
+        "manufacturer": "Generic",
+        "model": "Car",
+        "body_type": "vehicle",
+        "engine_info": "engine",
+        "transmission": "transmission",
+        "fuel_type": "fuel",
+        "mpg": "N/A",
+    }
+    cd = {**defaults, **cd}
+    sentiment = _sentiment(cd)
+    rating = round(random.uniform(*{"positive": (4.0, 4.8), "neutral": (3.0, 3.9), "negative": (1.8, 2.9)}[sentiment]), 1)
+    review = {
+        "review_title": {
+            "positive": f"{cd['year']} {cd['manufacturer']} {cd['model']}: A Solid Choice",
+            "neutral": f"{cd['year']} {cd['manufacturer']} {cd['model']}: Mixed Bag",
+            "negative": f"{cd['year']} {cd['manufacturer']} {cd['model']}: Needs Work",
+        }[sentiment],
         "rating": rating,
-        "review_text": review_text,
-        "author": random.choice(authors),
-        "pros": pros[:4],  # Limit to 4 pros max
-        "cons": cons[:4]   # Limit to 4 cons max
+        "review_text": (
+            {
+                "positive": f"The {cd['year']} {cd['manufacturer']} {cd['model']} impresses with a peppy {cd['engine_info']} and {cd['mpg']} MPG.\n\nOverall score: {rating}/5 – a well‑rounded contender.",
+                "neutral": f"The {cd['year']} {cd['manufacturer']} {cd['model']} is competent but rarely excites.\n\nI rate it {rating}/5 – fine if the price is right.",
+                "negative": f"The {cd['year']} {cd['manufacturer']} {cd['model']} struggles to stand out.\n\nOnly {rating}/5 – explore alternatives first.",
+            }[sentiment]
+        ),
+        "author": random.choice(["Michael Thompson", "Sarah Johnson", "James Rodriguez", "Emma Davis"]),
+        "pros": _pros(cd, sentiment),
+        "cons": _cons(cd, sentiment),
     }
-    
-    return json.dumps(mock_review)
+    return json.dumps(review)
 
-# Keep the determine_sentiment function the same
-def determine_sentiment(car_data: Dict[str, Any]) -> str:
-    """
-    Determine the sentiment of the review based on car attributes or random selection.
-    Returns "positive", "neutral", or "negative"
-    """
-    # Use a combination of car attributes and randomness
-    # First, check if certain manufacturers or models tend to get better reviews
-    manufacturer = car_data.get('manufacturer', '').lower()
-    model = car_data.get('model', '').lower()
-    year = car_data.get('year', 0)
-    
-    # Weights for each sentiment category (adjust these to change the distribution)
-    sentiment_weights = {
-        "positive": 40,   # 40% positive reviews
-        "neutral": 40,    # 40% neutral reviews
-        "negative": 20    # 20% negative reviews
-    }
-    
-    # Adjust weights based on car attributes
-    if manufacturer in ['tesla', 'toyota', 'lexus', 'honda']:
-        # These brands tend to get more positive reviews
-        sentiment_weights["positive"] += 15
-        sentiment_weights["negative"] -= 10
-    elif manufacturer in ['ford', 'chevrolet', 'volkswagen']:
-        # These are middle-of-the-road
-        sentiment_weights["neutral"] += 10
-    elif manufacturer in ['fiat', 'mitsubishi']:
-        # These brands tend to get more negative reviews
-        sentiment_weights["negative"] += 15
-        sentiment_weights["positive"] -= 10
-    
-    # Adjust for newer cars (newer cars tend to get better reviews)
-    current_year = datetime.datetime.now().year
-    if year >= current_year - 2:
-        sentiment_weights["positive"] += 10
-        sentiment_weights["negative"] -= 5
-    elif year <= current_year - 10:
-        sentiment_weights["negative"] += 15
-        sentiment_weights["positive"] -= 10
-    
-    # Normalize weights to ensure they sum to 100
-    total_weight = sum(sentiment_weights.values())
-    normalized_weights = {k: (v / total_weight) * 100 for k, v in sentiment_weights.items()}
-    
-    # Generate a random number between 0 and 100
-    rand_num = random.uniform(0, 100)
-    
-    # Determine sentiment based on the random number and weights
-    if rand_num < normalized_weights["positive"]:
-        return "positive"
-    elif rand_num < normalized_weights["positive"] + normalized_weights["neutral"]:
-        return "neutral"
-    else:
-        return "negative"
+# ---------------------------------------------------------------------------
+# Helper – sentiment & pros/cons
+# ---------------------------------------------------------------------------
 
-# Keep the pros and cons generation functions, but we'll use fewer items
-def generate_pros(car_data: Dict[str, Any], sentiment: str) -> List[str]:
-    """Generate a list of pros based on car data and sentiment"""
-    # Common pros regardless of sentiment
-    common_pros = [
-        f"{car_data.get('transmission', 'Transmission')} shifts smoothly in normal driving",
-        f"User-friendly infotainment system",
-        f"Adequate {car_data.get('body_type', 'vehicle')} for daily commuting"
-    ]
-    
-    # Additional pros based on sentiment
-    if sentiment == "positive":
-        possible_pros = [
-            f"Excellent fuel economy at {car_data.get('mpg', '')} MPG",
-            f"Responsive {car_data.get('engine_info', 'engine')}",
-            f"Premium interior materials",
-            f"Advanced technology features",
-            f"Engaging handling dynamics",
-            f"Comfortable and spacious seating",
-            f"Superior build quality",
-            f"Comprehensive safety features",
-            f"Versatile cargo space"
-        ]
-        # Select fewer pros for positive reviews (3-4 total)
-        return random.sample(possible_pros, k=min(3, len(possible_pros))) + random.sample(common_pros, k=1)
-    
-    elif sentiment == "neutral":
-        possible_pros = [
-            f"Decent fuel economy at {car_data.get('mpg', '')} MPG",
-            f"Adequate power for most situations",
-            f"Comfortable front seats",
-            f"User-friendly controls",
-            f"Reasonable cargo space",
-            f"Balanced ride quality",
-            f"Good visibility"
-        ]
-        # Select fewer pros for neutral reviews (2-3 total)
-        return random.sample(possible_pros, k=min(2, len(possible_pros))) + random.sample(common_pros, k=1)
-    
-    else:  # negative
-        possible_pros = [
-            f"Acceptable fuel tank range",
-            f"Basic {car_data.get('engine_info', 'engine')} works for urban driving",
-            f"Entry-level trim offers value",
-            f"Some thoughtful storage compartments",
-            f"Distinctive styling"
-        ]
-        # Select fewer pros for negative reviews (1-2 total)
-        return random.sample(possible_pros, k=min(2, len(possible_pros)))
+def _sentiment(cd: Dict[str, Any]) -> str:
+    manuf = cd.get("manufacturer", "").lower()
+    year = int(cd.get("year", 0) or 0)
+    curr = datetime.datetime.now().year
+    weights = {"positive": 40, "neutral": 40, "negative": 20}
+    if manuf in {"tesla", "toyota", "lexus", "honda"}:
+        weights["positive"] += 15; weights["negative"] -= 10
+    elif manuf in {"fiat", "mitsubishi"}:
+        weights["negative"] += 15; weights["positive"] -= 10
+    if year >= curr - 2:
+        weights["positive"] += 10; weights["negative"] -= 5
+    elif year <= curr - 10:
+        weights["negative"] += 15; weights["positive"] -= 10
+    roll = random.uniform(0, sum(weights.values()))
+    cum = 0
+    for k, w in weights.items():
+        cum += w
+        if roll <= cum:
+            return k
+    return "neutral"
 
-def generate_cons(car_data: Dict[str, Any], sentiment: str) -> List[str]:
-    """Generate a list of cons based on car data and sentiment"""
-    # Common cons regardless of sentiment
-    common_cons = [
-        f"Advanced features only on higher trims",
-        f"Standard warranty coverage",
-        f"Interior storage could be improved"
-    ]
-    
-    # Additional cons based on sentiment
-    if sentiment == "positive":
-        possible_cons = [
-            f"Higher starting price than some rivals",
-            f"Options increase price significantly",
-            f"Limited rear visibility",
-            f"Some advanced features have learning curve"
-        ]
-        # Select fewer cons for positive reviews (1-2 total)
-        return random.sample(possible_cons, k=min(2, len(possible_cons)))
-    
-    elif sentiment == "neutral":
-        possible_cons = [
-            f"Fuel economy lags behind leaders",
-            f"Performance is uninspiring",
-            f"Inconsistent materials quality",
-            f"Noticeable road noise at highway speeds",
-            f"Dated infotainment graphics",
-            f"Tight rear seating"
-        ]
-        # Select fewer cons for neutral reviews (2-3 total)
-        return random.sample(possible_cons, k=min(3, len(possible_cons)))
-    
-    else:  # negative
-        possible_cons = [
-            f"Poor fuel economy",
-            f"Underpowered engine",
-            f"Transmission hesitates frequently",
-            f"Cheap interior materials",
-            f"Uncomfortable seating",
-            f"Outdated technology",
-            f"Excessive road noise",
-            f"Unstable handling",
-            f"Limited cargo space"
-        ]
-        # Select fewer cons for negative reviews (3-4 total)
-        return random.sample(possible_cons, k=min(4, len(possible_cons)))
-def generate_cons(car_data: Dict[str, Any], sentiment: str) -> List[str]:
-    """Generate a list of cons based on car data and sentiment"""
-    # Common cons regardless of sentiment
-    common_cons = [
-        f"Some advanced features only available on higher trims",
-        f"Warranty coverage is standard but not exceptional",
-        f"Interior storage could be better organized"
-    ]
-    
-    # Additional cons based on sentiment
-    if sentiment == "positive":
-        possible_cons = [
-            f"Slightly higher starting price than some competitors",
-            f"Optional features can increase price significantly",
-            f"Rear visibility could be improved",
-            f"Learning curve for some advanced technology features",
-            f"Firm ride might not appeal to all drivers",
-            f"Requires premium fuel for optimal performance",
-            f"Some controls could be more intuitively placed"
-        ]
-        # Select fewer cons for positive reviews
-        return random.sample(possible_cons, k=min(3, len(possible_cons))) + random.sample(common_cons, k=1)
-    
-    elif sentiment == "neutral":
-        possible_cons = [
-            f"Fuel economy lags behind segment leaders",
-            f"{car_data.get('engine_info', 'Engine')} performance is adequate but uninspiring",
-            f"Interior materials quality is inconsistent",
-            f"Noticeable road noise at highway speeds",
-            f"Infotainment system graphics look dated",
-            f"Rear seat space is tight for taller passengers",
-            f"Handling becomes less composed on rough roads",
-            f"Cargo area has awkward shape limitations",
-            f"Some competitors offer better value",
-            f"Predicted reliability is average for the segment"
-        ]
-        # Select a moderate number of cons for neutral reviews
-        return random.sample(possible_cons, k=min(5, len(possible_cons))) + random.sample(common_cons, k=1)
-    
-    else:  # negative
-        possible_cons = [
-            f"Poor fuel economy relative to segment competitors",
-            f"Underpowered {car_data.get('engine_info', 'engine')} struggles during acceleration",
-            f"{car_data.get('transmission', 'Transmission')} exhibits frequent hesitation and rough shifts",
-            f"Interior materials feel cheap and prone to wear",
-            f"Uncomfortable seating becomes evident on longer drives",
-            f"Frustrating and outdated infotainment interface",
-            f"Excessive road and wind noise intrudes into cabin",
-            f"Handling feels unstable during emergency maneuvers",
-            f"Limited cargo capacity compared to competitors",
-            f"Concerning predicted reliability ratings",
-            f"Subpar safety scores in certain crash tests",
-            f"Poor value proposition considering features and performance",
-            f"Cramped rear seating for adult passengers",
-            f"Cheap-feeling interior control knobs and buttons",
-            f"Disappointing real-world efficiency falls below EPA estimates"
-        ]
-        # Select more cons for negative reviews
-        return random.sample(possible_cons, k=min(8, len(possible_cons))) + random.sample(common_cons, k=1)
+
+def _pros(cd: Dict[str, Any], sent: str) -> List[str]:
+    base = ["User‑friendly infotainment", "Smooth gearbox", "Everyday practicality"]
+    extra = {
+        "positive": [f"Excellent economy ({cd['mpg']} MPG)", f"Peppy {cd['engine_info']}", "Premium cabin materials"],
+        "neutral": ["Decent ride comfort", "Reasonable cargo space"],
+        "negative": ["Distinctive styling", "Affordable base price"],
+    }[sent]
+    return random.sample(extra, k=min(len(extra), {"positive": 3, "neutral": 2, "negative": 2}[sent])) + random.sample(base, k=1)
+
+
+def _cons(cd: Dict[str, Any], sent: str) -> List[str]:
+    base = ["Advanced features on higher trims", "Middling warranty", "Cabin storage could be better"]
+    extra = {
+        "positive": ["Higher starting price than rivals", "Limited rear visibility"],
+        "neutral": ["Fuel economy trails leaders", "Performance is average", "Road noise at speed"],
+        "negative": ["Underpowered engine", "Cheap interior materials", "Outdated tech", "Excessive road noise"],
+    }[sent]
+    return random.sample(extra, k=min(len(extra), {"positive": 2, "neutral": 3, "negative": 4}[sent])) + random.sample(base, k=1)
