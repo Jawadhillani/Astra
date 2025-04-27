@@ -22,8 +22,10 @@ import {
 } from 'lucide-react';
 
 import ReviewAnalysis from './ReviewAnalysis';
-// NEW IMPORT (instead of ChatInterface)
-import EnhancedNeuralInterface from './EnhancedNeuralInterface';
+
+// Import our custom car visualization components
+import CarBadgeIcon from './CarBadgeIcon';
+import CarIllustration from './CarIllustration';
 
 export default function CarDetail({ car, onBack }) {
   const [reviews, setReviews] = useState([]);
@@ -32,12 +34,13 @@ export default function CarDetail({ car, onBack }) {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [isButtonHovered, setIsButtonHovered] = useState(false);
   const [refreshingReviews, setRefreshingReviews] = useState(false);
+  const [expanded3DView, setExpanded3DView] = useState(false);
 
-  // --- New chatState approach ---
+  // --- Chat state approach ---
   // "closed" | "opening" | "open" | "closing"
   const [chatState, setChatState] = useState("closed");
 
-  // We'll store the button’s center & dimensions to animate from there
+  // We'll store the button's center & dimensions to animate from there
   const [buttonRect, setButtonRect] = useState({
     x: 0,
     y: 0,
@@ -284,31 +287,7 @@ export default function CarDetail({ car, onBack }) {
     return null;
   }
 
-  // -- Placeholder approach: custom color gradient based on manufacturer name --
-  function getCarImage() {
-    const manufacturer = car?.manufacturer?.toLowerCase() || '';
-    let bgColor = 'from-blue-600 to-black';
-
-    if (manufacturer.includes('tesla')) {
-      bgColor = 'from-red-600 to-black';
-    } else if (manufacturer.includes('bmw')) {
-      bgColor = 'from-blue-600 to-black';
-    } else if (manufacturer.includes('toyota')) {
-      bgColor = 'from-green-600 to-black';
-    } else if (manufacturer.includes('ford')) {
-      bgColor = 'from-indigo-600 to-black';
-    } else if (manufacturer.includes('honda')) {
-      bgColor = 'from-red-600 to-blue-600';
-    }
-
-    return (
-      <div className={`h-48 bg-gradient-to-r ${bgColor} rounded-lg flex items-center justify-center text-white`}>
-        <span className="text-3xl font-bold">{car?.manufacturer}</span>
-      </div>
-    );
-  }
-
-  // -- The “Genie” chat container with swirling conic-gradient & sparkles --
+  // -- The "Genie" chat container with swirling conic-gradient & sparkles --
   function renderChatContainer() {
     if (chatState === "closed") return null;
 
@@ -338,11 +317,49 @@ export default function CarDetail({ car, onBack }) {
 
           <div className="pt-16 flex-1 overflow-auto">
             <div className="max-w-5xl mx-auto h-full">
-              {/* Replace ChatInterface with EnhancedNeuralInterface */}
+              {/* Neural Interface */}
               <EnhancedNeuralInterface carId={car.id} />
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // -- Interactive car view toggle --
+  function toggleExpandedView() {
+    setExpanded3DView(!expanded3DView);
+  }
+
+  // -- Render the car visualization with our new components --
+  function renderCarVisualization() {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center">
+        <div className={`transition-all duration-500 ${expanded3DView ? 'scale-125' : 'scale-100'}`}>
+          {expanded3DView ? (
+            <CarIllustration 
+              bodyType={car.body_type || 'sedan'} 
+              manufacturer={car.manufacturer}
+              model={car.model}
+              year={car.year}
+              size="xl"
+              className="animate-float"
+            />
+          ) : (
+            <CarBadgeIcon 
+              manufacturer={car.manufacturer} 
+              size="xl" 
+              className="shadow-lg"
+            />
+          )}
+        </div>
+        
+        <button 
+          onClick={toggleExpandedView}
+          className="mt-4 text-sm bg-gradient-to-r from-violet-600 to-purple-700 text-white px-3 py-1.5 rounded-lg hover:shadow-lg transition-all duration-300"
+        >
+          {expanded3DView ? 'View Badge' : 'View Car Model'}
+        </button>
       </div>
     );
   }
@@ -589,8 +606,10 @@ export default function CarDetail({ car, onBack }) {
                   </div>
                 </div>
 
-                {/* Car image placeholder */}
-                <div>{getCarImage()}</div>
+                {/* Car image placeholder - REPLACED WITH OUR CUSTOM CAR ILLUSTRATION */}
+                <div className="h-48 relative overflow-hidden rounded-lg">
+                  {renderCarVisualization()}
+                </div>
               </div>
             </div>
           </div>
@@ -755,6 +774,16 @@ export default function CarDetail({ car, onBack }) {
           0% { background-position: 0% 50%; }
           100% { background-position: 100% 50%; }
         }
+        
+        /* Animation for the car illustration */
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        
+        .animate-float {
+          animation: float 3s ease-in-out infinite;
+        }
 
         /* Robot head float/eyes/mouth animations */
         @keyframes hover-float {
@@ -879,7 +908,7 @@ export default function CarDetail({ car, onBack }) {
           backdrop-filter: blur(10px);
         }
 
-        /* Simple “pulse” for the glowing circles */
+        /* Simple "pulse" for the glowing circles */
         @keyframes pulse-slow {
           0%, 100% { opacity: 0.8; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.05); }

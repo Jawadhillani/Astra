@@ -1,0 +1,223 @@
+/* car-animations.css */
+
+/* Hover effects for car illustrations */
+.car-badge-hover {
+    transition: all 0.3s ease;
+  }
+  
+  .car-badge-hover:hover {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+  }
+  
+  /* 3D-like floating animation for car illustrations */
+  @keyframes float {
+    0%, 100% { 
+      transform: translateY(0); 
+    }
+    50% { 
+      transform: translateY(-10px); 
+    }
+  }
+  
+  .car-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  /* Glow effect for car badges */
+  .car-badge-glow {
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 0 0px rgba(139, 92, 246, 0));
+  }
+  
+  .car-badge-glow:hover {
+    filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.8));
+  }
+  
+  /* Tire rotation animation for car illustrations */
+  @keyframes wheelRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .car-wheel {
+    transform-origin: center;
+    animation: wheelRotate 4s linear infinite;
+  }
+  
+  .car-wheel-fast {
+    transform-origin: center;
+    animation: wheelRotate 1s linear infinite;
+  }
+  
+  /* Headlight flicker effect */
+  @keyframes headlightFlicker {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
+  
+  .car-headlight {
+    animation: headlightFlicker 2s ease-in-out infinite;
+  }
+  
+  /* Smooth reveal animation for car details */
+  @keyframes revealCar {
+    from { 
+      opacity: 0; 
+      transform: translateY(20px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .car-reveal {
+    animation: revealCar 0.5s ease-out forwards;
+  }
+  
+  /* Car color transition effect */
+  .car-color-transition {
+    transition: fill 0.5s ease;
+  }
+  
+  .car-color-transition:hover {
+    fill: hsl(var(--car-hover-hue, 250), 70%, 50%);
+  }
+  
+  /* 3D perspective effect for car illustrations on hover */
+  .car-perspective-container {
+    perspective: 1000px;
+  }
+  
+  .car-perspective {
+    transition: transform 0.3s ease;
+    transform-style: preserve-3d;
+  }
+  
+  .car-perspective:hover {
+    transform: rotateY(15deg) rotateX(5deg);
+  }
+  
+  /* Badge spinning effect */
+  @keyframes badgeSpin {
+    from { transform: rotateY(0deg); }
+    to { transform: rotateY(360deg); }
+  }
+  
+  .car-badge-spin {
+    animation: badgeSpin 4s ease-in-out infinite;
+    transform-style: preserve-3d;
+  }
+  
+  /* Pulse effect for badges */
+  @keyframes badgePulse {
+    0%, 100% {
+      transform: scale(1);
+      filter: brightness(1);
+    }
+    50% {
+      transform: scale(1.05);
+      filter: brightness(1.2);
+    }
+  }
+  
+  .car-badge-pulse {
+    animation: badgePulse 2s ease-in-out infinite;
+  }
+  
+  /* Car entry animation for listings */
+  @keyframes carEntry {
+    from {
+      opacity: 0;
+      transform: translateX(-50px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .car-entry {
+    animation: carEntry 0.5s ease-out forwards;
+  }
+  
+  .car-entry-staggered {
+    opacity: 0;
+    animation: carEntry 0.5s ease-out forwards;
+    animation-delay: calc(var(--car-index, 0) * 0.1s);
+  }
+  
+  /* Shadow effect that moves with floating animation */
+  @keyframes shadowPulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.3;
+    }
+    50% {
+      transform: scale(0.8);
+      opacity: 0.2;
+    }
+  }
+  
+  .car-shadow {
+    animation: shadowPulse 3s ease-in-out infinite;
+    transform-origin: center;
+    filter: blur(5px);
+  }
+  
+  /* Shimmer effect for car paint */
+  @keyframes paintShimmer {
+    0% {
+      background-position: -100% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  
+  .car-paint-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.2) 50%,
+      rgba(255,255,255,0) 100%
+    );
+    background-size: 200% 100%;
+    animation: paintShimmer 3s ease-in-out infinite;
+    mix-blend-mode: overlay;
+  }
+  
+  /* Manufacturer badge shine effect */
+  @keyframes badgeShine {
+    0% {
+      background-position: -100% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  
+  .car-badge-shine {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .car-badge-shine::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.4) 50%,
+      rgba(255,255,255,0) 100%
+    );
+    background-size: 200% 100%;
+    animation: badgeShine 3s ease-in-out infinite;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
