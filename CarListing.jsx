@@ -1,16 +1,30 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import {
-  Database, AlertCircle, Search, Filter, 
-  RefreshCw, Fuel, Gauge, Calendar, Sliders, ChevronRight, 
+  Database, AlertCircle, Search, Filter,
+  RefreshCw, Fuel, Gauge, Calendar, Sliders, ChevronRight,
   ChevronDown, BarChart3, ListFilter, LayoutGrid, List, X,
   Info, ArrowUpDown, Check, Heart, Star, Settings, Eye
 } from 'lucide-react';
+import CarImage from './CarImage';  // Import our new CarImage component
 
-// Import our car image components
-import CarImage from './CarImage';
-import { preloadCarImages } from './CarImageService';
+// Initialize the Supabase client once
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Utility function to preload car images
+function preloadCarImages(cars) {
+    if (!cars || !Array.isArray(cars)) return;
+    cars.forEach(car => {
+        if (car.image_url) {
+            const img = new Image();
+            img.src = car.image_url;
+        }
+    });
+}
 
 export default function CarListing({ onSelectCar }) {
   const [cars, setCars] = useState([]);
@@ -31,82 +45,137 @@ export default function CarListing({ onSelectCar }) {
   const [yearRange, setYearRange] = useState([2000, 2023]);
   const [selectedBodyTypes, setSelectedBodyTypes] = useState([]);
   const [hoveredCar, setHoveredCar] = useState(null);
+  const [error, setError] = useState(null);
 
   const bodyTypes = ['Sedan', 'SUV', 'Pickup', 'Coupe', 'Hatchback', 'Convertible', 'Wagon'];
 
   useEffect(() => {
     async function checkDatabaseStatus() {
       try {
-        const response = await fetch('/api/test-db');
-        const data = await response.json();
-        setDbStatus({
-          checked: true,
-          usingFallback: data.using_fallback || false,
-          message: data.message || ''
-        });
+        console.log("Checking Supabase connection...");
+        const { data, error } = await supabase
+          .from('cars')
+          .select('count')
+          .single();
+         
+        if (error) {
+          console.error("Supabase connection error:", error);
+          setDbStatus({
+            checked: true,
+            usingFallback: true,
+            message: 'Database connection issue'
+          });
+        } else {
+          console.log("Supabase connection successful");
+          setDbStatus({
+            checked: true,
+            usingFallback: false,
+            message: 'Database connection successful'
+          });
+        }
       } catch (err) {
+        console.error('Failed to check database status:', err);
         setDbStatus({
           checked: true,
           usingFallback: true,
           message: 'Unable to check database status'
         });
+      } finally {
+        setTimeout(() => setLoading(false), 800);
       }
     }
+
     checkDatabaseStatus();
   }, []);
 
   useEffect(() => {
     async function fetchManufacturers() {
       try {
-        const response = await fetch('/api/cars');
-        if (!response.ok) return;
-        const carsData = await response.json();
-        const uniqueManufacturers = [...new Set(carsData.map(car => car.manufacturer).filter(Boolean))];
+        console.log('Fetching manufacturers...');
+        
+        const { data, error } = await supabase
+          .from('cars')
+          .select('manufacturer')
+          .order('manufacturer');
+         
+        if (error) throw error;
+        
+        const uniqueManufacturers = [...new Set(
+          data.map(item => item.manufacturer).filter(Boolean)
+        )];
+        
+        console.log('Extracted manufacturers:', uniqueManufacturers);
         setManufacturers(uniqueManufacturers);
-      } catch {}
+      } catch (error) {
+        console.error('Error fetching manufacturers:', error);
+      }
     }
+
     fetchManufacturers();
   }, []);
 
   useEffect(() => {
     async function fetchCars() {
+      if (!dbStatus.checked) {
+        console.log('Waiting for database status check...');
+        return;
+      }
+
       setLoading(true);
+      setError(null);
+
       try {
-        let url = '/api/cars';
-        const params = new URLSearchParams();
-        if (selectedManufacturer) params.set('manufacturer', selectedManufacturer);
-        if (searchTerm) params.set('query', searchTerm);
-        if (params.toString()) url += `?${params.toString()}`;
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error();
-        const data = await response.json();
-        let sortedData = sortCars(data, sortField, sortDirection);
-        let filteredData = sortedData;
-
-        if (selectedBodyTypes.length > 0) {
-          filteredData = filteredData.filter(car => selectedBodyTypes.includes(car.body_type));
+        let query = supabase.from('cars').select('*');
+        
+        if (selectedManufacturer) {
+          query = query.eq('manufacturer', selectedManufacturer);
+        }
+        
+        if (searchTerm) {
+          query = query.or(`manufacturer.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%`);
         }
 
-        filteredData = filteredData.filter(car => car.year >= yearRange[0] && car.year <= yearRange[1]);
+        query = query.gte('year', yearRange[0]).lte('year', yearRange[1]);
+
+        if (selectedBodyTypes.length > 0) {
+          query = query.in('body_type', selectedBodyTypes);
+        }
+
+        if (sortField) {
+          query = query.order(sortField, { ascending: sortDirection === 'asc' });
+        }
         
-        // Preload images for better performance
-        preloadCarImages(filteredData);
+        const { data, error } = await query.limit(50);
         
-        setCars(filteredData || []);
-      } catch {
+        if (error) {
+          throw error;
+        }
+        
+        if (data) {
+          preloadCarImages(data);
+          setCars(data);
+        } else {
+          setCars([]);
+          console.error('No cars data returned');
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        setError(`Failed to load cars: ${error.message}`);
         setCars([]);
       } finally {
         setLoading(false);
       }
     }
-    if (dbStatus.checked) fetchCars();
-  }, [searchTerm, selectedManufacturer, dbStatus.checked, sortField, sortDirection, selectedBodyTypes, yearRange]);
+
+    fetchCars();
+  }, [dbStatus.checked, searchTerm, selectedManufacturer, sortField, sortDirection, yearRange, selectedBodyTypes]);
 
   const handleSearch = (e) => setSearchTerm(e.target.value);
   const handleManufacturerChange = (e) => setSelectedManufacturer(e.target.value);
-  const handleBodyTypeToggle = (type) => setSelectedBodyTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]);
-  
+  const handleBodyTypeToggle = (type) => setSelectedBodyTypes(prev =>
+    prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+  );
+
   const handleSortChange = (field) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -115,44 +184,19 @@ export default function CarListing({ onSelectCar }) {
       setSortDirection('desc');
     }
   };
-  
-  const sortCars = (array, field, direction) => [...array].sort((a, b) => {
-    let aVal = a[field], bVal = b[field];
-    if (aVal == null) return 1;
-    if (bVal == null) return -1;
-    if (typeof aVal === 'string') {
-      aVal = aVal.toLowerCase();
-      bVal = bVal.toLowerCase();
-    }
-    return direction === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
-  });
 
-  // Generate car style based on manufacturer
-  const getCarStyle = (manufacturer, model) => {
+  const getCarStyle = (manufacturer) => {
     const styles = {
-      'BMW': {
-        bg: 'from-blue-600 to-violet-900',
-        accent: 'text-blue-400'
-      },
-      'Dodge': {
-        bg: 'from-red-600 to-violet-900',
-        accent: 'text-red-400'
-      }
+      'BMW':   { bg: 'from-blue-600 to-violet-900', accent: 'text-blue-400' },
+      'Dodge': { bg: 'from-red-600 to-violet-900',  accent: 'text-red-400' }
     };
-    
     return styles[manufacturer] || { bg: 'from-violet-600 to-indigo-900', accent: 'text-violet-400' };
   };
 
-  // Render star ratings
   const renderStars = (manufacturer) => {
-    // Use manufacturer to determine a mock rating
-    const ratings = {
-      'BMW': 4.7,
-      'Dodge': 4.2
-    };
-    
-    const rating = ratings[manufacturer] || 4.0;
-    
+    const ratings = { 'BMW': 4.7, 'Dodge': 4.2 };
+    const rating  = ratings[manufacturer] || 4.0;
+
     return (
       <div className="flex items-center">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -219,6 +263,7 @@ export default function CarListing({ onSelectCar }) {
         </div>
       </div>
 
+      {/* Search & basic filters */}
       <div className="flex flex-wrap gap-4 mb-6">
         {/* Search box */}
         <div className="relative flex-grow">
@@ -283,9 +328,9 @@ export default function CarListing({ onSelectCar }) {
             <div>
               <h3 className="text-sm font-medium text-gray-300 mb-4">Sort By</h3>
               {[
-                { field: 'year', icon: Calendar, label: 'Year' }, 
+                { field: 'year',         icon: Calendar, label: 'Year' }, 
                 { field: 'manufacturer', icon: Database, label: 'Manufacturer' }, 
-                { field: 'mpg', icon: Gauge, label: 'Fuel Economy' }
+                { field: 'mpg',          icon: Gauge,    label: 'Fuel Economy' }
               ].map(({ field, icon: Icon, label }) => (
                 <button
                   key={field}
@@ -316,7 +361,7 @@ export default function CarListing({ onSelectCar }) {
                     type="number" 
                     className="w-full px-4 py-3 bg-black/40 border border-gray-800 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500 rounded-lg text-white" 
                     value={yearRange[0]} 
-                    onChange={e => setYearRange([parseInt(e.target.value), yearRange[1]])} 
+                    onChange={e => setYearRange([parseInt(e.target.value) || 1990, yearRange[1]])} 
                   />
                 </div>
                 <div className="w-full">
@@ -325,7 +370,7 @@ export default function CarListing({ onSelectCar }) {
                     type="number" 
                     className="w-full px-4 py-3 bg-black/40 border border-gray-800 focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500 rounded-lg text-white" 
                     value={yearRange[1]} 
-                    onChange={e => setYearRange([yearRange[0], parseInt(e.target.value)])} 
+                    onChange={e => setYearRange([yearRange[0], parseInt(e.target.value) || 2025])} 
                   />
                 </div>
               </div>
@@ -350,6 +395,22 @@ export default function CarListing({ onSelectCar }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Database status message */}
+      {dbStatus.usingFallback && (
+        <div className="alert-warning p-4 rounded-lg mb-4 flex items-center">
+          <Database className="w-5 h-5 mr-2 text-amber-400" />
+          <p className="text-amber-400">{dbStatus.message || "Using fallback database with sample data"}</p>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && (
+        <div className="alert-error p-4 rounded-lg mb-4 flex items-center">
+          <AlertCircle className="w-5 h-5 mr-2 text-red-400" />
+          <p className="text-red-400">{error}</p>
         </div>
       )}
 
@@ -414,7 +475,7 @@ export default function CarListing({ onSelectCar }) {
                         <Heart className="w-4 h-4 text-white/70 hover:text-red-400" />
                       </button>
                       
-                      {/* Car image - USING OUR NEW COMPONENT */}
+                      {/* Car image */}
                       <CarImage 
                         car={car} 
                         view={hoveredCar === car.id ? 'detailed' : 'card'} 
@@ -566,4 +627,4 @@ export default function CarListing({ onSelectCar }) {
       `}</style>
     </div>
   );
-}
+} 

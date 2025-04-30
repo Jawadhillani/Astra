@@ -1,164 +1,116 @@
-'use client'
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { getCarImageUrl } from './CarImageService';
-import CarBadgeIcon from './CarBadgeIcon';
-import CarIllustration from './CarIllustration';
+import { CarSilhouettes } from './CarSilhouettes';
+import { getCarImage } from '../utils/unsplash';
 
-/**
- * CarImage component that displays a car image from multiple sources with fallbacks
- * 
- * @param {Object} props
- * @param {Object} props.car - The car object with manufacturer, model, year, etc.
- * @param {string} props.view - The view type: 'detailed', 'card', or 'badge'
- * @param {string} props.className - Additional CSS classes
- * @param {function} props.onLoad - Callback when image loads
- * @param {function} props.onError - Callback when image fails to load
- */
-const CarImage = ({ 
-  car, 
-  view = 'card', 
-  size = 'md',
-  className = '', 
-  onLoad,
-  onError
-}) => {
-  const [imageUrl, setImageUrl] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [placeholderType, setPlaceholderType] = useState('badge'); // 'badge' or 'illustration'
-  
-  // Toggle between badge and illustration on hover/click
-  const togglePlaceholder = () => {
-    setPlaceholderType(placeholderType === 'badge' ? 'illustration' : 'badge');
-  };
-  
-  // Get the appropriate size class
-  const getSizeClass = () => {
-    const sizeClasses = {
-      sm: 'h-16 w-16',
-      md: view === 'detailed' ? 'h-64 w-full' : 'h-32 w-32',
-      lg: view === 'detailed' ? 'h-80 w-full' : 'h-48 w-48',
-      xl: 'h-96 w-full'
-    };
-    return sizeClasses[size] || 'h-32 w-32';
-  };
-  
-  // Fetch the car image when the component mounts or car changes
-  useEffect(() => {
-    let isMounted = true;
-    
-    const fetchImage = async () => {
-      if (!car || !car.manufacturer || !car.model) {
-        setHasError(true);
-        setIsLoading(false);
-        return;
-      }
-      
-      try {
-        setIsLoading(true);
-        setHasError(false);
-        
-        // Get the image URL from our service
-        const url = await getCarImageUrl(car);
-        
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setImageUrl(url);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Error loading car image:', error);
-        if (isMounted) {
-          setHasError(true);
-          setIsLoading(false);
-          if (onError) onError(error);
-        }
-      }
-    };
-    
-    fetchImage();
-    
-    // Cleanup function to prevent state updates on unmounted component
-    return () => {
-      isMounted = false;
-    };
-  }, [car, onError]);
-  
-  // Handle successful image load
-  const handleImageLoad = () => {
-    if (onLoad) onLoad();
-  };
-  
-  // Handle image error
-  const handleImageError = () => {
-    setHasError(true);
-    setIsLoading(false);
-    if (onError) onError(new Error('Failed to load car image'));
-  };
-
-  // While loading, show a placeholder based on the car make
-  if (isLoading) {
-    return (
-      <div className={`${getSizeClass()} ${className} flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg overflow-hidden animate-pulse`}>
-        <CarBadgeIcon 
-          manufacturer={car?.manufacturer || 'unknown'} 
-          size={size} 
-          className="opacity-50"
-        />
-      </div>
-    );
+// Manufacturer-specific gradients and colors
+const brandStyles = {
+  'BMW': {
+    gradient: 'from-blue-600 to-violet-900',
+    accent: '#1C69D4', // BMW Blue
+    logo: '/logos/bmw.svg'
+  },
+  'Mercedes': {
+    gradient: 'from-gray-700 to-gray-900',
+    accent: '#242424', // Mercedes Black
+    logo: '/logos/mercedes.svg'
+  },
+  'Audi': {
+    gradient: 'from-gray-800 to-gray-950',
+    accent: '#000000', // Audi Black
+    logo: '/logos/audi.svg'
+  },
+  'Volvo': {
+    gradient: 'from-blue-800 to-gray-900',
+    accent: '#003057', // Volvo Blue
+    logo: '/logos/volvo.svg'
+  },
+  'Toyota': {
+    gradient: 'from-red-600 to-red-900',
+    accent: '#EB0A1E', // Toyota Red
+    logo: '/logos/toyota.svg'
+  },
+  'Honda': {
+    gradient: 'from-red-700 to-gray-900',
+    accent: '#E40521', // Honda Red
+    logo: '/logos/honda.svg'
+  },
+  'Ford': {
+    gradient: 'from-blue-500 to-blue-900',
+    accent: '#003478', // Ford Blue
+    logo: '/logos/ford.svg'
+  },
+  'Chevrolet': {
+    gradient: 'from-yellow-500 to-yellow-800',
+    accent: '#FAB70C', // Chevy Gold
+    logo: '/logos/chevrolet.svg'
+  },
+  'Porsche': {
+    gradient: 'from-red-500 to-gray-900',
+    accent: '#BC9A5C', // Porsche Gold
+    logo: '/logos/porsche.svg'
+  },
+  'default': {
+    gradient: 'from-violet-600 to-indigo-900',
+    accent: '#7C3AED',
+    logo: null
   }
-  
-  // If there's an error or no car image available, show custom illustration
-  if (hasError || !imageUrl) {
-    return (
-      <div 
-        className={`${getSizeClass()} ${className} flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg overflow-hidden transition-all duration-300`}
-        onClick={togglePlaceholder}
-      >
-        {placeholderType === 'badge' ? (
-          <CarBadgeIcon 
-            manufacturer={car?.manufacturer || 'unknown'} 
-            size={size} 
-            className="car-badge-hover" 
-          />
-        ) : (
-          <CarIllustration 
-            bodyType={car?.body_type || 'sedan'} 
-            manufacturer={car?.manufacturer || 'unknown'} 
-            model={car?.model || ''} 
-            year={car?.year || new Date().getFullYear()}
-            size={size}
-            className="car-float" 
-          />
-        )}
-      </div>
-    );
-  }
-  
-  // If we have a valid image URL, show the image
-  return (
-    <div className={`${getSizeClass()} ${className} bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg overflow-hidden relative group`}>
-      <img
-        src={imageUrl}
-        alt={`${car.year} ${car.manufacturer} ${car.model}`}
-        className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
-        onLoad={handleImageLoad}
-        onError={handleImageError}
-      />
-      
-      {/* Badge overlay on hover for quick identification */}
-      {view === 'detailed' && (
-        <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <CarBadgeIcon 
-            manufacturer={car.manufacturer} 
-            size="sm" 
-            className="shadow-lg" 
-          />
-        </div>
-      )}
-    </div>
-  );
 };
 
-export default CarImage;
+const brandLogos = {
+  BMW: '/logos/bmw.svg',
+  Jeep: '/logos/jeep.svg',
+  Volvo: '/logos/volvo.svg',
+  // ...add more as needed
+};
+
+const genericCar = '/generic-car.png'; // Place a generic car image in your public folder
+
+export default function CarImage({ car, className = '' }) {
+  const [imageUrl, setImageUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    getCarImage(car.manufacturer, car.model).then(url => {
+      if (isMounted) {
+        setImageUrl(url);
+        setLoading(false);
+      }
+    });
+    return () => { isMounted = false; };
+  }, [car.manufacturer, car.model]);
+
+  if (loading) {
+    return <div className={`w-full h-48 bg-gray-200 animate-pulse ${className}`} />;
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={`${car.manufacturer} ${car.model}`}
+      className={`w-full h-48 object-cover ${className}`}
+    />
+  );
+}
+
+// Add required styles
+const styles = `
+@keyframes movePattern {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 40px 40px;
+  }
+}
+`;
+
+// Add styles to document
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement('style');
+  styleSheet.textContent = styles;
+  document.head.appendChild(styleSheet);
+} 

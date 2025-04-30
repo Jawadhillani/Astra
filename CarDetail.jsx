@@ -1,9 +1,10 @@
 'use client';
-import { 
-  useState, 
-  useEffect, 
-  useRef 
+import {
+  useState,
+  useEffect,
+  useRef
 } from 'react';
+import { createClient } from '@supabase/supabase-js'; // Add Supabase import
 import {
   Star,
   ChevronLeft,
@@ -26,6 +27,11 @@ import ReviewAnalysis from './ReviewAnalysis';
 // Import our custom car visualization components
 import CarBadgeIcon from './CarBadgeIcon';
 import CarIllustration from './CarIllustration';
+
+// Initialize the Supabase client once (make sure env vars are correctly set)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function CarDetail({ car, onBack }) {
   const [reviews, setReviews] = useState([]);
@@ -53,7 +59,7 @@ export default function CarDetail({ car, onBack }) {
     valid: true,
     message: null,
     usingFallback: false,
-    dbConnected: true
+    dbConnected: true // Assume true initially, check below
   });
 
   // Refs
@@ -72,115 +78,140 @@ export default function CarDetail({ car, onBack }) {
     };
   }, [chatState]);
 
-  // -- On mount, check if car is valid, etc. --
+  // -- On mount, check if car is valid and fetch data using Supabase --
   useEffect(() => {
     console.log("CarDetail mounted with car:", car);
     if (car && car.id) {
-      checkCarAndDatabaseStatus();
+      // Start async data fetching
+      fetchCarDetailsAndReviews();
     } else {
       setLoading(false);
       setCarStatus({
         valid: false,
-        message: "Invalid car data provided",
+        message: "Invalid car data provided (No car ID).",
         usingFallback: false,
         dbConnected: true
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [car]);
+  }, [car]); // Re-run if car object changes (unlikely but good practice)
 
-  // -- Check DB status, then whether car exists --
-  async function checkCarAndDatabaseStatus() {
+  // Combined fetch function using Supabase
+  async function fetchCarDetailsAndReviews() {
+    setLoading(true);
+    setCarStatus({ ...carStatus, dbConnected: true, message: null }); // Assume connected at start of fetch
+
     try {
-      // 1) Check database
-      const dbResponse = await fetch('/api/test-db');
-      const dbData = await dbResponse.json();
-      const isUsingFallback = dbData.using_fallback || false;
-      const isDbConnected = dbData.status === "success";
+      // 1) Check DB connection via a simple query (Supabase client handles connection internally)
+      // We don't need a separate /api/test-db anymore
+      const { count, error: countError } = await supabase
+        .from('cars')
+        .select('count', { count: 'exact' });
 
-      console.log("Database status:", dbData);
-
-      // 2) Check if car with ID exists
-      const carResponse = await fetch(`/api/cars/${car.id}`);
-      console.log("Car fetch status:", carResponse.status);
-
-      if (!carResponse.ok) {
+      if (countError) {
+        console.error("Supabase connection check error:", countError);
         setCarStatus({
-          valid: false,
-          message: `Car with ID ${car.id} not found. Database may be using fallback data.`,
-          usingFallback: isUsingFallback,
-          dbConnected: isDbConnected
+          valid: true, // Car object itself is valid, just DB has issues
+          message: 'Database connection issue',
+          usingFallback: true, // Supabase might be using a cached state or similar, but indicates a problem
+          dbConnected: false
         });
-        setLoading(false);
-        return;
+        // We might still try fetching with potential fallback data depending on Supabase setup
+        // Or, we can stop here if DB connection is critical
+        // For now, we'll continue to attempt fetch, but indicate DB issue
+      } else {
+        console.log("Supabase connection check successful. Car count:", count);
+        setCarStatus(prev => ({
+            ...prev,
+            message: count > 0 ? null : 'Database is reachable but appears empty.',
+            usingFallback: count <= 0, // Indicate fallback if data is missing
+            dbConnected: true
+        }));
       }
 
-      // Car is valid
-      setCarStatus({
-        valid: true,
-        message: null,
-        usingFallback: isUsingFallback,
-        dbConnected: isDbConnected
-      });
+      // 2) Fetch the specific car details to ensure it exists in the DB currently
+      // (Optional, since the 'car' prop is passed, but good for validation)
+      const { data: carData, error: carError } = await supabase
+          .from('cars')
+          .select('*')
+          .eq('id', car.id)
+          .single(); // Use single() to get a single record
 
-      // Fetch reviews
-      fetchReviews();
+      if (carError || !carData) {
+          console.error(`Supabase fetch car error for ID ${car.id}:`, carError);
+          setCarStatus({
+              valid: false,
+              message: `Car with ID ${car.id} not found in the database.`,
+              usingFallback: carStatus.usingFallback, // Keep previous fallback status
+              dbConnected: carStatus.dbConnected // Keep previous DB status
+          });
+          setLoading(false);
+          return; // Stop if car not found
+      }
+
+      // Car is confirmed valid and exists
+      setCarStatus(prev => ({
+          ...prev,
+          valid: true,
+          message: prev.message || null, // Keep DB message if set
+          dbConnected: true // Confirmed connection by fetching car data
+      }));
+
+      // 3) Fetch reviews for this car using Supabase
+      await fetchReviewsSupabase(car.id); // Call the new Supabase fetch reviews function
 
     } catch (err) {
-      console.error('Error checking car and database status:', err);
+      console.error('Unexpected error during data fetch:', err);
       setCarStatus({
         valid: false,
-        message: `Error checking car status: ${err.message}`,
+        message: `An unexpected error occurred: ${err.message}`,
         usingFallback: false,
         dbConnected: false
       });
+      setReviews([]); // Clear reviews on error
+    } finally {
       setLoading(false);
+      setRefreshingReviews(false); // Ensure refreshing state is reset
     }
   }
 
-  // -- Fetch car reviews from your /api/ endpoint --
-  async function fetchReviews() {
-    setRefreshingReviews(true);
-    try {
-      const apiResponse = await fetch(`/api/cars/${car.id}/reviews`);
-      if (apiResponse.ok) {
-        const reviewsData = await apiResponse.json();
-        console.log("Fetched reviews from API:", reviewsData);
-        setReviews(reviewsData || []);
-        if (reviewsData?.length >= 3) generateSummary(reviewsData);
-      } else {
-        console.error(`Error fetching reviews: ${apiResponse.status}`);
-        // Retry once
-        setTimeout(async () => {
-          try {
-            const retryResponse = await fetch(`/api/cars/${car.id}/reviews`);
-            if (retryResponse.ok) {
-              const retryData = await retryResponse.json();
-              console.log("Fetched reviews on retry:", retryData);
-              setReviews(retryData || []);
-              if (retryData?.length >= 3) generateSummary(retryData);
-            } else {
-              console.error(`Retry also failed: ${retryResponse.status}`);
+
+  // -- Fetch car reviews using Supabase client --
+  async function fetchReviewsSupabase(carId) {
+      setRefreshingReviews(true);
+      try {
+          const { data: reviewsData, error: reviewsError } = await supabase
+              .from('reviews')
+              .select('*')
+              .eq('car_id', carId); // Filter reviews by car_id
+
+          if (reviewsError) {
+              console.error(`Supabase fetch reviews error for car ID ${carId}:`, reviewsError);
+              // Set reviews to empty and potentially show an error related to fetching reviews
               setReviews([]);
-            }
-          } catch (retryErr) {
-            console.error('Error in retry fetch:', retryErr);
-            setReviews([]);
-          } finally {
-            setLoading(false);
-            setRefreshingReviews(false);
+              // Optionally update carStatus message more specifically for review fetching error
+              // setCarStatus(prev => ({ ...prev, message: prev.message + " Failed to load reviews." }));
+          } else {
+              console.log("Fetched reviews from Supabase:", reviewsData);
+              setReviews(reviewsData || []);
+              if (reviewsData?.length >= 3) {
+                  generateSummary(reviewsData);
+              } else {
+                  setSummary(null); // Clear summary if not enough reviews
+              }
           }
-        }, 1000);
-        return;
+      } catch (err) {
+          console.error('Unexpected error fetching reviews from Supabase:', err);
+          setReviews([]);
+      } finally {
+          setRefreshingReviews(false);
       }
-    } catch (err) {
-      console.error('Error fetching reviews:', err);
-      setReviews([]);
-    } finally {
-      setLoading(false);
-      setRefreshingReviews(false);
-    }
   }
+
+
+  // -- Removed the old fetchReviews function that used the /api/ endpoint --
+  // async function fetchReviews() { ... }
+
 
   // -- Simple aggregator for a summary. You could use AI or advanced logic too. --
   function generateSummary(reviewData) {
@@ -200,6 +231,9 @@ export default function CarDetail({ car, onBack }) {
 
   // -- Show/hide the AI review analysis panel --
   function toggleAnalysis() {
+    // Note: Generating the AI review is likely still a backend API call.
+    // The ReviewAnalysis component (not provided) probably handles that fetch.
+    // If errors occur ONLY when clicking "Generate AI Review", the issue is likely in the backend /api/reviews/generate endpoint.
     setShowAnalysis(!showAnalysis);
     // If chat is open, close it
     if (chatState !== "closed") {
@@ -233,59 +267,46 @@ export default function CarDetail({ car, onBack }) {
 
   // -- Star rendering for the reviews --
   function renderStars(rating) {
-    if (!rating) return null;
+    if (rating === undefined || rating === null) return null; // Handle undefined/null ratings
+    const roundedRating = Math.round(rating); // Round to the nearest whole star
     return Array(5).fill(0).map((_, i) => (
-      <Star 
+      <Star
         key={i}
-        className={`h-4 w-4 ${i < Math.round(rating) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
+        className={`h-4 w-4 ${i < roundedRating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`}
       />
     ));
   }
 
   // -- Database status info (fallback/connection issues) --
   function renderDatabaseStatus() {
-    if (carStatus.usingFallback) {
-      return (
-        <div
-          style={{
-            background: 'linear-gradient(to right, rgba(252, 211, 77, 0.1), rgba(251, 191, 36, 0.05))',
-            borderRadius: '0.5rem',
-            border: '1px solid rgba(252, 211, 77, 0.3)',
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: '0.875rem',
-            color: 'rgb(252, 211, 77)'
-          }}
-        >
-          <Database className="w-4 h-4 mr-2" />
-          Using fallback database with sample data
-        </div>
-      );
-    }
-    if (!carStatus.dbConnected) {
-      return (
-        <div
-          style={{
-            background: 'linear-gradient(to right, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))',
-            borderRadius: '0.5rem',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: '0.875rem',
-            color: 'rgb(239, 68, 68)'
-          }}
-        >
-          <Database className="w-4 h-4 mr-2" />
-          Database connection issue
-        </div>
-      );
+    if (carStatus.message) { // Display message if there is one
+        const isError = !carStatus.dbConnected || !carStatus.valid;
+        const bgColor = isError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)'; // Red for error, Yellow for warning/fallback
+        const borderColor = isError ? 'rgba(239, 68, 68, 0.3)' : 'rgba(251, 191, 36, 0.3)';
+        const textColor = isError ? 'rgb(239, 68, 68)' : 'rgb(252, 211, 77)'; // Red or Yellow color
+
+        return (
+            <div
+                style={{
+                    background: `linear-gradient(to right, ${bgColor}, ${bgColor.replace('0.1', '0.05')})`,
+                    borderRadius: '0.5rem',
+                    border: `1px solid ${borderColor}`,
+                    marginBottom: '1rem',
+                    padding: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '0.875rem',
+                    color: textColor
+                }}
+            >
+                <Database className="w-4 h-4 mr-2" />
+                {carStatus.message}
+            </div>
+        );
     }
     return null;
   }
+
 
   // -- The "Genie" chat container with swirling conic-gradient & sparkles --
   function renderChatContainer() {
@@ -296,6 +317,10 @@ export default function CarDetail({ car, onBack }) {
       "--origin-x": `${buttonRect.x}px`,
       "--origin-y": `${buttonRect.y}px`
     };
+
+    // Assuming EnhancedNeuralInterface is the same as ChatInterface from uploaded files
+    const EnhancedNeuralInterface = require('./ChatInterface').default;
+
 
     return (
       <div
@@ -318,7 +343,8 @@ export default function CarDetail({ car, onBack }) {
           <div className="pt-16 flex-1 overflow-auto">
             <div className="max-w-5xl mx-auto h-full">
               {/* Neural Interface */}
-              <EnhancedNeuralInterface carId={car.id} />
+              {/* Pass the Supabase client or ensure ChatInterface initializes its own */}
+              <EnhancedNeuralInterface carId={car.id} supabase={supabase} />
             </div>
           </div>
         </div>
@@ -337,8 +363,8 @@ export default function CarDetail({ car, onBack }) {
       <div className="h-full w-full flex flex-col items-center justify-center">
         <div className={`transition-all duration-500 ${expanded3DView ? 'scale-125' : 'scale-100'}`}>
           {expanded3DView ? (
-            <CarIllustration 
-              bodyType={car.body_type || 'sedan'} 
+            <CarIllustration
+              bodyType={car.body_type || 'sedan'}
               manufacturer={car.manufacturer}
               model={car.model}
               year={car.year}
@@ -346,15 +372,15 @@ export default function CarDetail({ car, onBack }) {
               className="animate-float"
             />
           ) : (
-            <CarBadgeIcon 
-              manufacturer={car.manufacturer} 
-              size="xl" 
+            <CarBadgeIcon
+              manufacturer={car.manufacturer}
+              size="xl"
               className="shadow-lg"
             />
           )}
         </div>
-        
-        <button 
+
+        <button
           onClick={toggleExpandedView}
           className="mt-4 text-sm bg-gradient-to-r from-violet-600 to-purple-700 text-white px-3 py-1.5 rounded-lg hover:shadow-lg transition-all duration-300"
         >
@@ -365,11 +391,12 @@ export default function CarDetail({ car, onBack }) {
   }
 
   // -- If car is invalid or DB fails, show an error card --
+  // Use the message in carStatus to determine what went wrong
   if (!carStatus.valid) {
     return (
-      <div>
+      <div className="text-white"> {/* Ensure text is visible */}
         <div className="mb-4">
-          <button 
+          <button
             onClick={onBack}
             className="flex items-center text-blue-600 hover:text-blue-800 font-medium"
           >
@@ -378,7 +405,7 @@ export default function CarDetail({ car, onBack }) {
           </button>
         </div>
 
-        {renderDatabaseStatus()}
+        {renderDatabaseStatus()} {/* This will now show the specific message */}
 
         <div
           style={{
@@ -389,32 +416,33 @@ export default function CarDetail({ car, onBack }) {
             boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
           }}
         >
-          <h2 className="text-xl font-bold mb-2 text-red-500">Car Not Found</h2>
-          <p className="mb-4 text-red-600">
-            {carStatus.message || "This car doesn't exist in the database."}
+          <h2 className="text-xl font-bold mb-2 text-red-500">Error Loading Car</h2> {/* More generic title */}
+          <p className="mb-4 text-red-300"> {/* text-red-600 was too dark */}
+            {carStatus.message || "An unexpected error occurred while loading car details."}
           </p>
-          <p className="text-sm mt-2 text-gray-300">ID: {car?.id || 'Unknown'}</p>
+          {car?.id && <p className="text-sm mt-2 text-gray-300">Attempted Car ID: {car.id}</p>} {/* Show ID if available */}
           <p className="text-sm mt-4 text-gray-400">
-            Try restarting the application or checking your database connection.
+            Please ensure the car ID is valid and your database connection is functioning correctly.
           </p>
-          <button 
-            onClick={checkCarAndDatabaseStatus}
-            className="mt-4 btn-dark"
+          <button
+            onClick={fetchCarDetailsAndReviews} // Retry the combined fetch
+            className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
           >
-            Retry
+            Retry Loading Car
           </button>
         </div>
       </div>
     );
   }
 
+
   // -- Otherwise, render the car details & reviews as normal --
   return (
-    <div className="relative">
+    <div className="relative text-white"> {/* Ensure text is visible */}
       {/* Main Content */}
       <div ref={mainContentRef} className="relative">
         <div className="mb-6">
-          <button 
+          <button
             onClick={onBack}
             className="flex items-center text-blue-600 hover:text-blue-800 font-medium"
           >
@@ -423,13 +451,13 @@ export default function CarDetail({ car, onBack }) {
           </button>
         </div>
 
-        {renderDatabaseStatus()}
+        {renderDatabaseStatus()} {/* This will now show the specific message */}
 
         {/* Car Info Section */}
         <div className="relative rounded-lg overflow-hidden mb-6">
           {/* Animated gradient border (optional subtle effect) */}
-          <div 
-            className="absolute inset-0 rounded-lg" 
+          <div
+            className="absolute inset-0 rounded-lg"
             style={{
               background: 'linear-gradient(90deg, var(--accent-blue), var(--accent-violet), var(--accent-purple), var(--accent-blue))',
               backgroundSize: '300% 100%',
@@ -618,6 +646,7 @@ export default function CarDetail({ car, onBack }) {
         {/* AI Analysis panel */}
         {showAnalysis && (
           <div className="mb-6">
+             {/* Assuming ReviewAnalysis component handles its own data fetching or generation */}
             <ReviewAnalysis carId={car.id} usingFallback={carStatus.usingFallback} />
           </div>
         )}
@@ -631,7 +660,7 @@ export default function CarDetail({ car, onBack }) {
                 <div className="header flex justify-between items-center">
                   <h2 className="text-xl font-bold">Reviews</h2>
                   <button
-                    onClick={fetchReviews}
+                    onClick={() => fetchReviewsSupabase(car.id)} // Call the Supabase fetch function
                     disabled={refreshingReviews}
                     className="flex items-center text-gray-300 hover:text-white text-sm bg-gray-700 px-3 py-1 rounded-lg"
                   >
@@ -646,42 +675,40 @@ export default function CarDetail({ car, onBack }) {
                   {loading ? (
                     <div className="p-8 text-center">
                       <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
-                      <p className="text-gray-600">Loading reviews...</p>
+                      <p className="text-gray-400">Loading reviews...</p> {/* text-gray-600 was too dark */}
                     </div>
                   ) : reviews.length > 0 ? (
                     <div className="space-y-6">
                       {reviews.map((review) => (
-                        <div 
-                          key={review.id} 
-                          className="dynamic-card p-4 hover:bg-gray-800/30"
+                         <div
+                          key={review.id}
+                          className="dynamic-card p-4 hover:bg-gray-800/30 border border-gray-800 rounded-lg" // Added border/rounded for card appearance
                         >
-                          <div className="flex justify-between">
-                            <h3 className="font-bold text-gray-900">
-                              {review.review_title || review.title || 'Review'}
-                            </h3>
-                            <div className="flex">{renderStars(review.rating)}</div>
+                          <div className="flex justify-between items-start"> {/* Aligned items-start */}
+                            <h3 className="font-bold text-white text-lg leading-tight">{review.review_title || review.title || 'Review'}</h3> {/* text-gray-900 too dark, added text-lg/leading */}
+                            <div className="flex-shrink-0 flex ml-4">{renderStars(review.rating)}</div> {/* Added flex-shrink and margin */}
                           </div>
                           <p className="text-sm text-gray-500 mb-3">
                             By {review.author} •{' '}
                             {new Date(review.review_date || review.date).toLocaleDateString()}
                           </p>
                           {(review.is_ai_generated || review.is_mock) && (
-                            <div className="flex items-center text-xs text-blue-600 mb-2">
+                            <div className="flex items-center text-xs text-blue-400 mb-2"> {/* text-blue-600 too dark */}
                               <AlertCircle className="w-3 h-3 mr-1" />
                               AI Generated
                             </div>
                           )}
-                          <p className="mt-2 text-gray-700 review-text">
+                          <p className="mt-2 text-gray-300 review-text"> {/* text-gray-700 too dark */}
                             {review.review_text || review.text}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="bg-gray-50 p-8 rounded-lg text-center">
-                      <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-600 mb-2">No reviews yet for this vehicle.</p>
-                      <p className="text-sm text-gray-500">Be the first to generate an AI review!</p>
+                    <div className="bg-black/40 border border-gray-800 p-8 rounded-lg text-center"> {/* Adjusted background/border */}
+                      <MessageCircle className="w-12 h-12 text-gray-500 mx-auto mb-4" /> {/* text-gray-300 too light */}
+                      <p className="text-gray-300 mb-2">No reviews yet for this vehicle.</p> {/* text-gray-600 too dark */}
+                      <p className="text-sm text-gray-400">Be the first to generate an AI review!</p>
                     </div>
                   )}
                 </div>
@@ -704,16 +731,16 @@ export default function CarDetail({ car, onBack }) {
                           border: '1px solid rgba(59, 130, 246, 0.3)'
                         }}
                       >
-                        <Star className="w-6 h-6 text-blue-600 fill-blue-600" />
+                        <Star className="w-6 h-6 text-blue-500 fill-blue-500" /> {/* text-blue-600 too dark */}
                       </div>
                       <div>
                         <div className="flex items-center">
-                          <span className="text-3xl font-bold text-gray-900">{summary.avgRating}</span>
+                          <span className="text-3xl font-bold text-white">{summary.avgRating}</span> {/* text-gray-900 too dark */}
                           <div className="flex ml-3 mt-1">
                             {renderStars(parseFloat(summary.avgRating))}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-400"> {/* text-gray-600 too dark */}
                           Based on {summary.totalReviews} reviews
                         </p>
                       </div>
@@ -722,15 +749,15 @@ export default function CarDetail({ car, onBack }) {
                     <div className="space-y-4 mt-6">
                       <div>
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium flex items-center text-green-700">
+                          <span className="font-medium flex items-center text-green-500"> {/* text-green-700 too dark */}
                             <ArrowUp className="w-4 h-4 mr-1" />
                             Positive
                           </span>
-                          <span className="font-medium text-green-700">
+                          <span className="font-medium text-green-500"> {/* text-green-700 too dark */}
                             {summary.positivePercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full bg-gray-700 rounded-full h-2.5"> {/* bg-gray-200 too light */}
                           <div
                             className="bg-gradient-to-r from-green-500 to-green-400 h-2.5 rounded-full"
                             style={{ width: `${summary.positivePercentage}%` }}
@@ -739,15 +766,15 @@ export default function CarDetail({ car, onBack }) {
                       </div>
                       <div>
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium flex items-center text-red-700">
+                          <span className="font-medium flex items-center text-red-500"> {/* text-red-700 too dark */}
                             <ArrowDown className="w-4 h-4 mr-1" />
                             Negative
                           </span>
-                          <span className="font-medium text-red-700">
+                          <span className="font-medium text-red-500"> {/* text-red-700 too dark */}
                             {summary.negativePercentage}%
                           </span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full bg-gray-700 rounded-full h-2.5"> {/* bg-gray-200 too light */}
                           <div
                             className="bg-gradient-to-r from-red-500 to-red-400 h-2.5 rounded-full"
                             style={{ width: `${summary.negativePercentage}%` }}
@@ -769,18 +796,26 @@ export default function CarDetail({ car, onBack }) {
 
       {/* --- Global / Keyframe Styles --- */}
       <style jsx global>{`
+         /* Define CSS variables for dark theme colors if they aren't already */
+        :root {
+           --dark-card: #1f2937; /* Example gray-800 equivalent */
+           --accent-blue: #3b82f6; /* Example blue-500 equivalent */
+           --accent-violet: #8b5cf6; /* Example violet-500 equivalent */
+           --accent-purple: #a78bfa; /* Example purple-400 equivalent */
+        }
+
         /* Subtle gradient border on car detail card */
         @keyframes borderGradientAnimation {
           0% { background-position: 0% 50%; }
           100% { background-position: 100% 50%; }
         }
-        
+
         /* Animation for the car illustration */
         @keyframes float {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-10px); }
         }
-        
+
         .animate-float {
           animation: float 3s ease-in-out infinite;
         }
@@ -809,17 +844,17 @@ export default function CarDetail({ car, onBack }) {
           animation: robot-eye-alt 4s infinite;
         }
         @keyframes robot-talk {
-          0%, 100% { height: 1px; width: 4px; }
-          25% { height: 2px; width: 5px; }
-          50% { height: 1px; width: 4px; }
-          75% { height: 2px; width: 5px; }
+          0%, 100% { height: 0.5px; width: 16px; } /* Adjusted size based on w-4 h-0.5 */
+          25% { height: 1px; width: 20px; } /* Adjusted size */
+          50% { height: 0.5px; width: 16px; } /* Adjusted size */
+          75% { height: 1px; width: 20px; } /* Adjusted size */
         }
         .animate-robot-talk {
           animation: robot-talk 0.8s infinite;
         }
 
-        /* Chat container with clip-path expansions 
-           "genie-appear" and "genie-disappear" 
+        /* Chat container with clip-path expansions
+           "genie-appear" and "genie-disappear"
         */
         .chat-genie-container {
           --clip-duration: 500ms;
@@ -920,6 +955,13 @@ export default function CarDetail({ car, onBack }) {
         .energy-pulse .pulse {
           animation: energy-pulse 1.6s infinite;
         }
+
+         /* Review card styles */
+        .dynamic-card {
+            /* Remove background/border from here as they are now in the element style */
+            transition: background-color 0.2s ease-in-out;
+        }
+
       `}</style>
     </div>
   );
