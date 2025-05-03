@@ -361,31 +361,16 @@ export default function CarDetail({ car, onBack }) {
   function renderCarVisualization() {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center">
-        <div className={`transition-all duration-500 ${expanded3DView ? 'scale-125' : 'scale-100'}`}>
-          {expanded3DView ? (
-            <CarIllustration
-              bodyType={car.body_type || 'sedan'}
-              manufacturer={car.manufacturer}
-              model={car.model}
-              year={car.year}
-              size="xl"
-              className="animate-float"
-            />
-          ) : (
-            <CarBadgeIcon
-              manufacturer={car.manufacturer}
-              size="xl"
-              className="shadow-lg"
-            />
-          )}
+        <div className="transition-all duration-500 scale-125">
+          <CarIllustration
+            bodyType={car.body_type || 'sedan'}
+            manufacturer={car.manufacturer}
+            model={car.model}
+            year={car.year}
+            size="xl"
+            className="animate-float"
+          />
         </div>
-
-        <button
-          onClick={toggleExpandedView}
-          className="mt-4 text-sm bg-gradient-to-r from-violet-600 to-purple-700 text-white px-3 py-1.5 rounded-lg hover:shadow-lg transition-all duration-300"
-        >
-          {expanded3DView ? 'View Badge' : 'View Car Model'}
-        </button>
       </div>
     );
   }

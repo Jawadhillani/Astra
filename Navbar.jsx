@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Car, Search, Settings, BarChart3 } from 'lucide-react';
+import { ChevronDown, Car, Search, Settings, BarChart3, Menu, X } from 'lucide-react';
+import EnhancedCherryLogo from './EnhancedCherryLogo';
 
 // Dropdown with proper background
 const NavDropdown = ({ title, isActive, onClick, children }) => {
@@ -59,108 +60,104 @@ const NavDropdown = ({ title, isActive, onClick, children }) => {
 // Navbar with dropdown menus
 const Navbar = ({ currentView, onChangeView }) => {
   const [scrolled, setScrolled] = useState(false);
-  
-  // Detect scroll for adding shadow
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 10) {
-        setScrolled(true);
-      } else {
-        setScrolled(false);
-      }
+      setScrolled(window.scrollY > 50);
     };
-    
+
     window.addEventListener('scroll', handleScroll);
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
   return (
-    <div className={`sticky top-0 z-50 transition-all duration-300 ${
-      scrolled ? 'shadow-xl' : ''
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      scrolled ? 'bg-black/80 backdrop-blur-md shadow-lg' : 'bg-transparent'
     }`}>
-      {/* Solid background that's always visible */}
-      <div className="absolute inset-0 bg-dark-bg bg-opacity-95 backdrop-filter backdrop-blur-lg border-b border-violet-900/30"></div>
-      
-      {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <button
-            className={`px-4 py-2 rounded-md transition-all duration-300 ${
-              currentView === 'home' 
-                ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white' 
-                : 'bg-dark-surface text-gray-300 hover:bg-gray-800'
-            }`}
-            onClick={() => onChangeView('home')}
-          >
-            Home
-          </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex-shrink-0">
+            <EnhancedCherryLogo size="default" />
+          </div>
           
-          {/* Car Dropdown */}
-          <NavDropdown 
-            title="Cars" 
-            isActive={currentView === 'listing'} 
-            onClick={() => onChangeView('listing')}
-          >
-            <div className="px-1">
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('listing')}
-              >
-                <Car className="w-4 h-4 mr-2" />
-                All Vehicles
-              </button>
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('listing')}
-              >
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Popular Models
-              </button>
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('listing')}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Compare Cars
-              </button>
-            </div>
-          </NavDropdown>
-          
-          {/* Search Dropdown */}
-          <NavDropdown 
-            title="Search" 
-            isActive={currentView === 'advanced-search'} 
-            onClick={() => onChangeView('advanced-search')}
-          >
-            <div className="px-1">
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('advanced-search')}
-              >
-                <Search className="w-4 h-4 mr-2" />
-                Advanced Search
-              </button>
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('advanced-search')}
-              >
-                <Car className="w-4 h-4 mr-2" />
-                Search by Make
-              </button>
-              <button 
-                className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
-                onClick={() => onChangeView('advanced-search')}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Search by Features
-              </button>
-            </div>
-          </NavDropdown>
+          <div className="flex items-center space-x-4">
+            <button
+              className={`px-4 py-2 rounded-md transition-all duration-300 ${
+                currentView === 'home' 
+                  ? 'bg-gradient-to-r from-violet-600 to-blue-600 text-white' 
+                  : 'bg-dark-surface text-gray-300 hover:bg-gray-800'
+              }`}
+              onClick={() => onChangeView('home')}
+            >
+              Home
+            </button>
+            
+            {/* Car Dropdown */}
+            <NavDropdown 
+              title="Cars" 
+              isActive={currentView === 'listing'} 
+              onClick={() => onChangeView('listing')}
+            >
+              <div className="px-1">
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('listing')}
+                >
+                  <Car className="w-4 h-4 mr-2" />
+                  All Vehicles
+                </button>
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('listing')}
+                >
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Popular Models
+                </button>
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('listing')}
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Compare Cars
+                </button>
+              </div>
+            </NavDropdown>
+            
+            {/* Search Dropdown */}
+            <NavDropdown 
+              title="Search" 
+              isActive={currentView === 'advanced-search'} 
+              onClick={() => onChangeView('advanced-search')}
+            >
+              <div className="px-1">
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('advanced-search')}
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  Advanced Search
+                </button>
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('advanced-search')}
+                >
+                  <Car className="w-4 h-4 mr-2" />
+                  Search by Make
+                </button>
+                <button 
+                  className="flex items-center w-full px-4 py-2 text-gray-300 hover:bg-violet-800 hover:text-white rounded-md"
+                  onClick={() => onChangeView('advanced-search')}
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Search by Features
+                </button>
+              </div>
+            </NavDropdown>
+          </div>
         </div>
       </div>
-    </div>
+    </nav>
   );
 };
 

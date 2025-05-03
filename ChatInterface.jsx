@@ -23,7 +23,11 @@ import {
   BarChart3,
   Mic,
   Volume2,
-  Sparkles
+  Sparkles,
+  Search,
+  DollarSign,
+  X,
+  Activity
 } from 'lucide-react';
 
 // Import the visual components for chat
@@ -32,11 +36,166 @@ import {
   RatingCard, 
   ProsConsCard, 
   CategoryScoresCard, 
-  SentimentCard 
+  SentimentCard
 } from './ChatComponents';
 
 // Import suggestion chips for smart recommendations
 import SuggestionChips from './SuggestionChips';
+
+// Advanced typing indicator with dynamic particles
+const AdvancedTypingIndicator = () => {
+  return (
+    <div className="flex justify-start">
+      <div className="bg-gray-800/80 backdrop-blur-md rounded-full py-2 px-4 flex items-center space-x-2 border border-violet-900/30">
+        <div className="relative w-6 h-6 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 flex items-center justify-center">
+          <Bot className="w-3 h-3 text-white" />
+          
+          {/* Pulsing ring animation */}
+          <div className="absolute inset-0 rounded-full border border-violet-500 animate-ping-slow opacity-60"></div>
+          
+          {/* Orbital particle system */}
+          <div className="typing-particle-system">
+            <div className="typing-particle p1"></div>
+            <div className="typing-particle p2"></div>
+            <div className="typing-particle p3"></div>
+          </div>
+        </div>
+        
+        {/* Animated text */}
+        <div className="text-sm text-gray-300 font-medium">
+          <span className="text-violet-400">AI</span> is composing
+          <span className="inline-flex ml-1">
+            <span className="animate-typing-dot">.</span>
+            <span className="animate-typing-dot animation-delay-100">.</span>
+            <span className="animate-typing-dot animation-delay-200">.</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Voice input visualization
+const VoiceInputVisualizer = ({ isListening, audioLevel = 0 }) => {
+  const canvasRef = useRef(null);
+  
+  useEffect(() => {
+    if (!canvasRef.current || !isListening) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    let animationFrame;
+    
+    const bars = 28;
+    const barWidth = canvas.width / bars;
+    
+    const renderFrame = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw visualization bars
+      for (let i = 0; i < bars; i++) {
+        const height = Math.max(
+          5,
+          Math.sin(i / bars * Math.PI) * audioLevel * canvas.height * 0.6 + 
+          Math.random() * audioLevel * 15
+        );
+        
+        const hue = 270;
+        const lightness = 50 + Math.sin(i / bars * Math.PI) * 20;
+        
+        ctx.fillStyle = `hsl(${hue}, 80%, ${lightness}%)`;
+        
+        const x = i * barWidth;
+        const y = (canvas.height - height) / 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, y + 2);
+        ctx.lineTo(x, y + height - 2);
+        ctx.arcTo(x, y + height, x + 2, y + height, 2);
+        ctx.lineTo(x + barWidth - 2, y + height);
+        ctx.arcTo(x + barWidth, y + height, x + barWidth, y + height - 2, 2);
+        ctx.lineTo(x + barWidth, y + 2);
+        ctx.arcTo(x + barWidth, y, x + barWidth - 2, y, 2);
+        ctx.lineTo(x + 2, y);
+        ctx.arcTo(x, y, x, y + 2, 2);
+        ctx.fill();
+      }
+      
+      animationFrame = requestAnimationFrame(renderFrame);
+    };
+    
+    renderFrame();
+    
+    return () => {
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [isListening, audioLevel]);
+  
+  return (
+    <div className={`
+      fixed bottom-20 left-1/2 transform -translate-x-1/2 
+      p-4 bg-gray-900/90 backdrop-blur-md rounded-lg border border-violet-600/30
+      transition-all duration-300 shadow-lg
+      ${isListening ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}
+    `}>
+      <div className="text-center mb-2">
+        <p className="text-violet-300 font-medium">Listening...</p>
+      </div>
+      
+      <canvas 
+        ref={canvasRef} 
+        width={280} 
+        height={60} 
+        className="rounded-lg"
+      />
+      
+      <div className="mt-2 flex justify-center">
+        <button className="bg-red-500 hover:bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Context-aware action buttons
+const ContextAwareActionButtons = ({ context, onAction }) => {
+  if (!context || Object.keys(context).length === 0) return null;
+  
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      {context.carComparison && (
+        <button 
+          onClick={() => onAction('compare', context.carComparison)}
+          className="px-3 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg text-xs font-medium text-white flex items-center shadow-md hover:shadow-lg transition-all hover:translate-y-[-2px]"
+        >
+          <BarChart3 className="w-3 h-3 mr-1" />
+          Compare {context.carComparison.car1.model} vs {context.carComparison.car2.model}
+        </button>
+      )}
+      
+      {context.carFeature && (
+        <button 
+          onClick={() => onAction('explore', context.carFeature)}
+          className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-blue-400 rounded-lg text-xs font-medium text-white flex items-center shadow-md hover:shadow-lg transition-all hover:translate-y-[-2px]"
+        >
+          <Search className="w-3 h-3 mr-1" />
+          Explore {context.carFeature} in detail
+        </button>
+      )}
+      
+      {context.priceCheck && (
+        <button 
+          onClick={() => onAction('price', context.priceCheck)}
+          className="px-3 py-1.5 bg-gradient-to-r from-green-600 to-green-400 rounded-lg text-xs font-medium text-white flex items-center shadow-md hover:shadow-lg transition-all hover:translate-y-[-2px]"
+        >
+          <DollarSign className="w-3 h-3 mr-1" />
+          Check current pricing
+        </button>
+      )}
+    </div>
+  );
+};
 
 /**
  * Enhanced chat interface with the following features:
@@ -504,164 +663,153 @@ const ChatInterface = ({
     );
   };
 
+  const renderMessage = (msg, idx) => {
+    const isUser = msg.sender === 'user';
+    const isLastMessage = idx === messages.length - 1;
+    
+    return (
+      <div 
+        key={idx} 
+        className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+      >
+        <div className={`
+          relative 
+          max-w-[85%] 
+          transition-all 
+          duration-500 
+          transform 
+          ${isLastMessage ? 'scale-in-message' : ''}
+          ${isUser ? 'origin-right' : 'origin-left'}
+        `}>
+          {/* Avatar */}
+          <div className={`
+            absolute 
+            ${isUser ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'} 
+            top-0 
+            ${isUser ? 'bg-gradient-to-br from-blue-500 to-violet-600' : 'bg-gradient-to-br from-violet-700 to-indigo-900'}
+            w-8 h-8 
+            rounded-full 
+            flex 
+            items-center 
+            justify-center 
+            border-2 
+            border-gray-900 
+            shadow-glow-sm
+            -translate-y-1/2
+            z-10
+          `}>
+            {isUser ? (
+              <User className="w-4 h-4 text-white" />
+            ) : (
+              <Bot className="w-4 h-4 text-white" />
+            )}
+          </div>
+          
+          {/* Message bubble with dynamic gradient border */}
+          <div 
+            className={`
+              ${isUser ? 'message-bubble-user' : 'message-bubble-ai'} 
+              p-4 
+              rounded-xl
+              ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'}
+              mt-4
+              backdrop-blur-sm
+              border
+              ${isUser ? 'border-blue-500/30' : 'border-violet-600/30'}
+              shadow-lg
+              relative
+              overflow-hidden
+              z-0
+            `}
+          >
+            {/* Animated gradient background */}
+            <div className="absolute inset-0 opacity-10 z-0 message-gradient-animated"></div>
+            
+            {/* Message text with enhanced typography */}
+            <div className="relative z-10">
+              <p className="text-gray-100">{msg.text}</p>
+              
+              {/* Interactive elements */}
+              {msg.components && renderMessageComponents(msg.components)}
+              
+              {/* Suggestion chips */}
+              {msg.suggestions && msg.suggestions.length > 0 && (
+                <SuggestionChips 
+                  suggestions={msg.suggestions} 
+                  onSelect={handleSuggestionClick} 
+                />
+              )}
+            </div>
+          </div>
+          
+          {/* Message timestamp with futuristic design */}
+          <div className={`
+            ${isUser ? 'text-right' : 'text-left'} 
+            mt-1 
+            text-xs 
+            text-gray-500 
+            opacity-0 
+            group-hover:opacity-100 
+            transition-opacity
+          `}>
+            {msg.timestamp ? formatTimestamp(msg.timestamp) : 'just now'}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="bg-gradient-to-b from-gray-900 to-black h-full flex flex-col border border-gray-800 overflow-hidden">
+    <div className="bg-gradient-to-b from-gray-900 to-black h-full flex flex-col border border-gray-800 overflow-hidden chat-dynamic-bg">
       {/* Header with voice controls */}
-      <div className="bg-gradient-to-r from-blue-700 to-violet-700 text-white p-4 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-blue-800 to-violet-800 text-white p-4 flex items-center justify-between">
         <h2 className="text-xl font-bold flex items-center">
           <Bot className="w-6 h-6 mr-2" />
           AI Automotive Expert
         </h2>
         
-        {carData && (
-          <p className="text-sm text-blue-200">
-            Exploring the {carData.year} {carData.manufacturer} {carData.model}
-          </p>
-        )}
-        
-        {/* Voice controls */}
-        <div className="flex items-center gap-2">
-          {/* Voice output toggle */}
-          {onVoiceToggle && (
+        {/* Voice controls in a nice pill */}
+        {onVoiceToggle && (
+          <div className="flex items-center gap-1 bg-black/20 p-1 rounded-full">
             <button
               onClick={() => onVoiceToggle(!voiceEnabled)}
-              className={`p-2 rounded-full hover:bg-black/30 ${voiceEnabled ? 'text-green-300' : 'text-gray-300'}`}
+              className={`p-2 rounded-full ${voiceEnabled ? 'bg-green-500/20 text-green-300' : 'text-gray-300 hover:bg-white/10'}`}
               title={voiceEnabled ? "Voice responses enabled" : "Voice responses disabled"}
             >
-              <Volume2 className="w-5 h-5" />
+              <Volume2 className="w-4 h-4" />
             </button>
-          )}
-          
-          {/* Voice input button */}
-          {'webkitSpeechRecognition' in window && (
-            <button
-              onClick={startVoiceRecognition}
-              disabled={listening}
-              className={`p-2 rounded-full hover:bg-black/30 ${
-                listening ? 'bg-red-600 text-white' : 'text-gray-300'
-              }`}
-              title={listening ? "Listening..." : "Speak your question"}
-            >
-              <Mic className={`w-5 h-5 ${listening ? 'animate-pulse' : ''}`} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Messages area with smooth scrolling */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {messages.map((msg, idx) => (
-          <div 
-            key={idx} 
-            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-message-appear`}
-          >
-            {msg.sender === 'user' ? (
-              <div className="flex items-start gap-2">
-                <div className="bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg p-3 max-w-md shadow-lg">
-                  <p>{msg.text}</p>
-                </div>
-                <div className="bg-blue-500 rounded-full p-1 mt-1">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2">
-                <div className={`bg-violet-700 rounded-full p-1 mt-1 ${msg.isSystem ? 'bg-orange-700' : ''}`}>
-                  {msg.isSystem ? (
-                    <AlertCircle className="w-4 h-4 text-white" />
-                  ) : (
-                    <Bot className="w-4 h-4 text-white" />
-                  )}
-                </div>
-                <div 
-                  className={`bg-gradient-to-r from-gray-800 to-gray-900 text-gray-100 rounded-tr-lg rounded-br-lg rounded-bl-lg p-3 max-w-md shadow-lg border border-gray-700 ${msg.error ? 'border-red-700 bg-red-900/30' : ''}`}
-                >
-                  {idx === messages.length - 1 && typingEffect ? (
-                    <>
-                      <p>{currentTypingText}</p>
-                      <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-blink"></span>
-                    </>
-                  ) : (
-                    <>
-                      <p>{msg.text}</p>
-                      
-                      {msg.error && msg.showRetry && (
-                        <button 
-                          onClick={handleRetry}
-                          className="mt-2 px-3 py-1 bg-red-800/50 hover:bg-red-700/60 text-white rounded-md text-sm flex items-center"
-                        >
-                          <RefreshCw className="w-3 h-3 mr-1" /> Try again
-                        </button>
-                      )}
-                      
-                      {/* Render any component cards */}
-                      {msg.components && renderMessageComponents(msg.components)}
-                      
-                      {/* Render suggestions if available */}
-                      {msg.suggestions && msg.suggestions.length > 0 && (
-                        <SuggestionChips 
-                          suggestions={msg.suggestions} 
-                          onSelect={handleSuggestionClick} 
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+            
+            {'webkitSpeechRecognition' in window && (
+              <button
+                onClick={startVoiceRecognition}
+                disabled={listening}
+                className={`p-2 rounded-full ${
+                  listening ? 'bg-red-500 text-white' : 'text-gray-300 hover:bg-white/10'
+                }`}
+                title={listening ? "Listening..." : "Speak your question"}
+              >
+                <Mic className={`w-4 h-4 ${listening ? 'animate-pulse' : ''}`} />
+              </button>
             )}
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* Messages area with clean styling */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5">
+        {messages.map((msg, idx) => renderMessage(msg, idx))}
 
         {/* Loading indicator */}
         {loading && !typingEffect && (
-          <div className="flex justify-start animate-message-appear">
-            <div className="flex items-start gap-2">
-              <div className="bg-violet-700 rounded-full p-1 mt-1">
-                <Bot className="w-4 h-4 text-white" />
-              </div>
-              <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-gray-100 rounded-tr-lg rounded-br-lg rounded-bl-lg p-3 shadow-lg border border-gray-700">
-                <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce delay-100"></div>
-                  <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce delay-200"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Initial suggestions */}
-        {showSuggestions && !loading && messages.length < 2 && (
-          <div className="mt-6 space-y-2 animate-fade-in">
-            <p className="text-gray-400 text-sm">Here's what you can ask me:</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {messages[0]?.suggestions?.map((suggestion, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="bg-gradient-to-r from-gray-800 to-gray-900 text-gray-200 text-sm px-3 py-2 rounded-lg border border-gray-700 hover:border-violet-500 transition-all hover:shadow-glow flex items-center justify-between group"
-                >
-                  <span className="flex items-center">
-                    {idx === 0 && <Fuel className="w-4 h-4 mr-2 text-blue-400" />}
-                    {idx === 1 && <Gauge className="w-4 h-4 mr-2 text-green-400" />}
-                    {idx === 2 && <BarChart3 className="w-4 h-4 mr-2 text-purple-400" />}
-                    {idx === 3 && <Shield className="w-4 h-4 mr-2 text-yellow-400" />}
-                    {idx === 4 && <Award className="w-4 h-4 mr-2 text-red-400" />}
-                    {suggestion}
-                  </span>
-                  <CornerDownRight className="w-4 h-4 text-gray-500 group-hover:text-violet-400 transition-colors" />
-                </button>
-              ))}
-            </div>
-          </div>
+          <AdvancedTypingIndicator />
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input area with voice indicator */}
-      <div className="border-t border-gray-800 p-4 backdrop-blur-sm bg-black/40">
-        <div className="flex space-x-2">
+      <div className="border-t border-gray-800 p-4 backdrop-blur bg-black/60">
+        <div className="relative flex">
           <input
             ref={inputRef}
             type="text"
@@ -669,102 +817,151 @@ const ChatInterface = ({
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             placeholder={listening ? "Listening..." : "Ask about this vehicle..."}
-            className={`flex-1 border border-gray-700 bg-gray-800/50 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 text-white placeholder-gray-500 ${listening ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+            className={`w-full bg-gray-800/50 border border-gray-700 rounded-l-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 text-white ${listening ? 'border-red-500 ring-1 ring-red-500' : ''}`}
           />
           
-          {/* Smart send button with icon and animation */}
           <button
             onClick={() => handleSend()}
             disabled={loading || !input.trim()}
-            className="bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-lg px-4 py-3 hover:from-blue-700 hover:to-violet-700 disabled:opacity-50 transition-colors shadow-lg hover:shadow-glow relative group overflow-hidden"
+            className="bg-gradient-to-r from-blue-600 to-violet-700 text-white rounded-r-lg px-5 py-3 hover:from-blue-500 hover:to-violet-600 disabled:opacity-50 disabled:hover:from-blue-600 disabled:hover:to-violet-700 transition-colors"
           >
-            {/* Sparkle animation effect */}
-            <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="absolute inset-0 sparkle-pattern animate-sparkle-shift"></div>
-            </div>
-            
-            <div className="relative z-10 flex items-center">
-              <Sparkles className="w-5 h-5 mr-2 hidden md:block animate-pulse-subtle" />
-              <span className="hidden md:block">Send</span>
-              <Send className="w-5 h-5 md:hidden" />
-            </div>
+            <Send className="w-5 h-5" />
           </button>
         </div>
       </div>
+
+      {/* Voice input visualizer */}
+      <VoiceInputVisualizer isListening={listening} audioLevel={0.5} />
       
-      {/* Helper hint at the bottom */}
-      {carData && (
-        <div className="flex justify-center items-center space-x-2 py-2 border-t border-gray-800/50 bg-gray-900/30">
-          <HelpCircle className="w-3 h-3 text-gray-500" />
-          <p className="text-xs text-gray-500">
-            Ask anything about the {carData.year} {carData.manufacturer} {carData.model}
-          </p>
-        </div>
-      )}
-      
-      {/* CSS Animations and Effects */}
+      {/* Global CSS */}
       <style jsx global>{`
-        @keyframes message-appear {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes message-gradient-flow {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
         }
-        
-        .animate-message-appear {
-          animation: message-appear 0.3s ease-out forwards;
+
+        .message-gradient-animated {
+          background: linear-gradient(45deg, 
+            rgba(139, 92, 246, 0.4), 
+            rgba(59, 130, 246, 0.4), 
+            rgba(236, 72, 153, 0.4), 
+            rgba(139, 92, 246, 0.4)
+          );
+          background-size: 400% 400%;
+          animation: message-gradient-flow 8s ease infinite;
         }
-        
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
+
+        .message-bubble-user {
+          background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(59, 130, 246, 0.1));
         }
-        
-        .animate-blink {
-          animation: blink 1s infinite;
+
+        .message-bubble-ai {
+          background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(139, 92, 246, 0.1));
         }
-        
-        .shadow-glow {
+
+        .shadow-glow-sm {
           box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
         }
-        
-        .delay-100 {
+
+        /* Typing indicator animations */
+        .typing-particle-system {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+        }
+
+        .typing-particle {
+          position: absolute;
+          width: 4px;
+          height: 4px;
+          border-radius: 50%;
+          background: white;
+          opacity: 0.7;
+        }
+
+        .typing-particle.p1 {
+          animation: orbit 2s linear infinite;
+        }
+
+        .typing-particle.p2 {
+          animation: orbit 3s linear infinite;
+          animation-delay: -1s;
+        }
+
+        .typing-particle.p3 {
+          animation: orbit 1.5s linear infinite;
+          animation-delay: -0.5s;
+        }
+
+        @keyframes orbit {
+          0% { transform: rotate(0deg) translateX(8px) rotate(0deg); }
+          100% { transform: rotate(360deg) translateX(8px) rotate(-360deg); }
+        }
+
+        @keyframes ping-slow {
+          0% { transform: scale(1); opacity: 0.8; }
+          50% { transform: scale(1.3); opacity: 0.4; }
+          100% { transform: scale(1); opacity: 0.8; }
+        }
+
+        .animate-ping-slow {
+          animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        .animate-typing-dot {
+          animation: typing-dot 1.4s infinite;
+        }
+
+        .animation-delay-100 {
           animation-delay: 0.1s;
         }
-        
-        .delay-200 {
+
+        .animation-delay-200 {
           animation-delay: 0.2s;
         }
-        
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.5s ease forwards;
-        }
-        
-        .animate-pulse-subtle {
-          animation: pulse-subtle 2s infinite;
-        }
-        
-        @keyframes pulse-subtle {
-          0%, 100% { opacity: 0.7; }
+
+        @keyframes typing-dot {
+          0%, 20% { opacity: 0; }
           50% { opacity: 1; }
+          100% { opacity: 0; }
         }
-        
-        .sparkle-pattern {
-          background-image: radial-gradient(circle, #fff 1px, transparent 1px);
-          background-size: 12px 12px;
+
+        /* Message scale-in animation */
+        @keyframes scale-in-message {
+          0% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
         }
-        
-        @keyframes sparkle-shift {
-          0% { transform: translateY(20px) translateX(-20px); opacity: 0; }
-          50% { opacity: 0.5; }
-          100% { transform: translateY(-20px) translateX(20px); opacity: 0; }
+
+        .scale-in-message {
+          animation: scale-in-message 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
-        
-        .animate-sparkle-shift {
-          animation: sparkle-shift 2s linear infinite;
+
+        /* Animated background for chat container */
+        .chat-dynamic-bg {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .chat-dynamic-bg::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: 
+            radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 20%),
+            radial-gradient(circle at 80% 40%, rgba(59, 130, 246, 0.03) 0%, transparent 20%),
+            radial-gradient(circle at 40% 70%, rgba(236, 72, 153, 0.03) 0%, transparent 20%);
+          filter: blur(8px);
+          z-index: 0;
+          animation: pulse-subtle 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse-subtle {
+          0% { opacity: 0.5; }
+          100% { opacity: 1; }
         }
       `}</style>
     </div>
