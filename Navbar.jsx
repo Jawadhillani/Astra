@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Car, Search, Settings, BarChart3, Menu, X } from 'lucide-react';
 import EnhancedCherryLogo from './EnhancedCherryLogo';
+import ThemeToggle from './ThemeToggle';
 
 // Dropdown with proper background
 const NavDropdown = ({ title, isActive, onClick, children }) => {
@@ -76,7 +77,7 @@ const Navbar = ({ currentView, onChangeView }) => {
       scrolled ? 'bg-black/80 backdrop-blur-md shadow-lg' : 'bg-transparent'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-24">
           <div className="flex-shrink-0">
             <EnhancedCherryLogo size="default" />
           </div>
@@ -154,6 +155,11 @@ const Navbar = ({ currentView, onChangeView }) => {
                 </button>
               </div>
             </NavDropdown>
+
+            {/* Theme Toggle */}
+            <div className="ml-4 border-l border-gray-700 pl-4 flex items-center">
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </div>
