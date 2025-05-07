@@ -513,6 +513,7 @@ const EnhancedChatInterface = ({
   const [typingEffect, setTypingEffect] = useState(false);
   const [currentTypingText, setCurrentTypingText] = useState('');
   const [fullResponseText, setFullResponseText] = useState('');
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [errorState, setErrorState] = useState({
     hasError: false,
     retryCount: 0
@@ -541,16 +542,21 @@ const EnhancedChatInterface = ({
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Initialize with welcome message
+  // Initialize with welcome message only on first load
   useEffect(() => {
-    // Create welcome message with smart suggestions based on context
-    const initialMessage = { 
-      text: getWelcomeMessage(carId ? true : false),
-      sender: 'ai',
-      suggestions: getInitialSuggestions()
-    };
-    
-    setMessages([initialMessage]);
+    // Only create welcome message if this is the first load
+    if (isFirstLoad) {
+      // Create welcome message with smart suggestions based on context
+      const initialMessage = { 
+        text: getWelcomeMessage(carId ? true : false),
+        sender: 'ai',
+        suggestions: getInitialSuggestions()
+      };
+      
+      setMessages([initialMessage]);
+      // Mark that we've shown the welcome message
+      setIsFirstLoad(false);
+    }
     
     // After loading welcome message, fetch car data
     if (carId) {
@@ -561,7 +567,7 @@ const EnhancedChatInterface = ({
     setTimeout(() => {
       inputRef.current?.focus();
     }, 500);
-  }, [carId]);
+  }, [carId, isFirstLoad]);
 
   // Scroll to bottom of chat when messages update
   useEffect(() => {
@@ -668,108 +674,131 @@ const EnhancedChatInterface = ({
   const handleSend = async (messageText = input) => {
     if (!messageText.trim()) return;
 
-    // Add user message to chat
-    const userMessage = { text: messageText, sender: 'user' };
-    setMessages(prev => [...prev, userMessage]);
+    const currentUserMessage = { text: messageText, sender: 'user' };
+    
+    // Check if this will be the first real AI response
+    const isFirstAiResponse = messages.length === 1;
+
+    // Add user message to chat immediately
+    setMessages(prev => [...prev, currentUserMessage]);
     setInput('');
     setLoading(true);
-    setShowSuggestions(false);
+    setShowSuggestions(false); // Hide suggestions while loading response
 
     try {
-      // Prepare conversation history for context
+      // Prepare conversation history for context (excluding the initial welcome)
       const messageHistory = messages
-        .map(m => m.text)
+        .filter(m => m.sender !== 'ai' || m.text !== getWelcomeMessage(!!carId)) // Filter out initial welcome
+        .map(m => m.text) // Just send the text content
         .filter(text => text && text.trim().length > 0);
-      
-      // Make request to our OpenAI-powered endpoint
+
+      // Make request to your backend API
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           message: messageText,
-          car_id: carId,
-          conversation_history: messageHistory
+          car_id: carId || null, // Ensure car_id is null if not provided
+          history: messageHistory // Send as simple array of strings
         })
       });
 
-      if (!response.ok) throw new Error(`Error: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `API Error: ${response.status}`);
+      }
 
       const data = await response.json();
-      
-      // Create AI response using the same UI components you already have
-      const aiResponse = { 
+
+      // Validate response data
+      if (!data || typeof data.response !== 'string') {
+        throw new Error('Invalid response format from API');
+      }
+
+      // Construct the basic AI response
+      const aiResponse = {
         text: data.response,
         sender: 'ai',
-        components: []
+        components: [], // Initialize empty components array
+        suggestions: [] // Initialize empty suggestions
       };
-      
-      // Add components based on the car data and analysis
-      if (data.car_data && messages.length <= 2) {
-        aiResponse.components.push({
-          type: 'specification',
-          data: data.car_data
-        });
-      }
-      
-      if (data.analysis) {
-        // Add car feature highlights
-        if (carData) {
+
+      // Conditionally add components ONLY for the first AI response
+      if (isFirstAiResponse) {
+        // Add car illustration if available
+        if (data.car_data) {
           aiResponse.components.push({
-            type: 'feature_highlights',
+            type: 'specification',
+            data: data.car_data
+          });
+        } else if (carData) {
+          aiResponse.components.push({
+            type: 'specification',
             data: carData
           });
         }
-        
-        // Add owner insights instead of sentiment
-        aiResponse.components.push({
-          type: 'owner_insights',
-          data: null // Use default data
-        });
-        
-        // Add feature comparison if its a comparison question
-        if (messageText.toLowerCase().includes('compare') || 
-            messageText.toLowerCase().includes('vs') || 
-            messageText.toLowerCase().includes('difference')) {
+
+        // Add analysis components if analysis data exists
+        if (data.analysis) {
+          // Add car feature highlights
+          if (carData) {
+            aiResponse.components.push({
+              type: 'feature_highlights',
+              data: carData
+            });
+          }
+
+          // Add owner insights
           aiResponse.components.push({
-            type: 'feature_comparison',
-            data: carData
+            type: 'owner_insights',
+            data: data.owner_insights_data || null
           });
+
+          // Add feature comparison only if relevant
+          if (messageText.toLowerCase().includes('compare') ||
+              messageText.toLowerCase().includes('vs') ||
+              messageText.toLowerCase().includes('difference')) {
+            aiResponse.components.push({
+              type: 'feature_comparison',
+              data: data.comparison_data || carData
+            });
+          }
         }
       }
-      
+
       // Generate follow-up suggestions
-      aiResponse.suggestions = [
+      aiResponse.suggestions = data.suggestions || [
         `What are common issues with the ${carData?.model || 'this car'}?`,
         `How does it compare to competitors?`,
         `What's the reliability like?`,
         `Tell me about the interior features`,
         `What's the resale value like?`
       ];
-      
+
       // Start typing animation effect
       setFullResponseText(data.response);
       setCurrentTypingText('');
       setTypingEffect(true);
-      
-      // Add the AI response
-      setMessages(prev => [...prev, aiResponse]);
-      
+
+      // Add the AI response with empty text for typing effect
+      setMessages(prev => [...prev, { ...aiResponse, text: '' }]);
+
       // Reset error state
-      setErrorState({
-        hasError: false,
-        retryCount: 0
-      });
+      setErrorState({ hasError: false, retryCount: 0 });
+
     } catch (error) {
       console.error('Chat error:', error);
-      
-      // Handle error
-      setErrorState({
-        hasError: true,
-        retryCount: errorState.retryCount + 1
-      });
-      
-      setMessages(prev => [...prev, { 
-        text: "I'm having trouble connecting to my knowledge system. Please try again in a moment.",
+
+      // Handle error state
+      const currentRetryCount = errorState.retryCount;
+      setErrorState({ hasError: true, retryCount: currentRetryCount + 1 });
+
+      // Show user-friendly error message
+      setMessages(prev => [...prev, {
+        text: `I apologize, but I'm having trouble processing your request. Please try again in a moment.`,
         sender: 'ai',
         error: true
       }]);
@@ -790,10 +819,12 @@ const EnhancedChatInterface = ({
     return (
       <div className="space-y-4 mt-4">
         {components.map((component, index) => {
+          const componentKey = `${component.type}-${index}`;
+          
           switch (component.type) {
             case 'specification':
               return (
-                <div className="mb-2 max-w-md mx-auto transform hover:scale-105 transition-transform">
+                <div key={componentKey} className="mb-2 max-w-md mx-auto transform hover:scale-105 transition-transform">
                   <div className="flex justify-center">
                     <CarIllustration
                       bodyType={component.data.body_type || 'sedan'}
@@ -807,11 +838,11 @@ const EnhancedChatInterface = ({
                 </div>
               );
             case 'feature_highlights':
-              return <CarFeatureHighlightsCard key={index} carData={component.data} />;
+              return <CarFeatureHighlightsCard key={componentKey} carData={component.data} />;
             case 'owner_insights':
-              return <OwnerInsightsCard key={index} ownerData={component.data} />;
+              return <OwnerInsightsCard key={componentKey} ownerData={component.data} />;
             case 'feature_comparison':
-              return <FeatureComparisonCard key={index} carData={component.data} />;
+              return <FeatureComparisonCard key={componentKey} carData={component.data} />;
             default:
               return null;
           }

@@ -56,7 +56,7 @@ export default function CarDetail({ car, onBack }) {
 
   // Car validity & DB status
   const [carStatus, setCarStatus] = useState({
-    valid: true,
+    exists: true,
     message: null,
     usingFallback: false,
     dbConnected: true // Assume true initially, check below
@@ -87,7 +87,7 @@ export default function CarDetail({ car, onBack }) {
     } else {
       setLoading(false);
       setCarStatus({
-        valid: false,
+        exists: false,
         message: "Invalid car data provided (No car ID).",
         usingFallback: false,
         dbConnected: true
@@ -102,60 +102,29 @@ export default function CarDetail({ car, onBack }) {
     setCarStatus({ ...carStatus, dbConnected: true, message: null }); // Assume connected at start of fetch
 
     try {
-      // 1) Check DB connection via a simple query (Supabase client handles connection internally)
-      // We don't need a separate /api/test-db anymore
-      const { count, error: countError } = await supabase
-        .from('cars')
-        .select('count', { count: 'exact' });
+      // First check products status
+      const response = await fetch('/api/status');
+      const dbData = await response.json();
+      console.log("Products status:", dbData);
 
-      if (countError) {
-        console.error("Supabase connection check error:", countError);
+      if (!dbData.status === 'successful') {
         setCarStatus({
-          valid: true, // Car object itself is valid, just DB has issues
-          message: 'Database connection issue',
-          usingFallback: true, // Supabase might be using a cached state or similar, but indicates a problem
-          dbConnected: false
+          exists: false,
+          message: `Car with ID ${car.id} not found. Products may be using fallback data.`
         });
-        // We might still try fetching with potential fallback data depending on Supabase setup
-        // Or, we can stop here if DB connection is critical
-        // For now, we'll continue to attempt fetch, but indicate DB issue
+        return;
+      }
+
+      // Then check if car exists
+      const carResponse = await fetch(`/api/cars/${car.id}`);
+      if (!carResponse.ok) {
+        setCarStatus({
+          exists: false,
+          message: `Car with ID ${car.id} not found in the products.`
+        });
       } else {
-        console.log("Supabase connection check successful. Car count:", count);
-        setCarStatus(prev => ({
-            ...prev,
-            message: count > 0 ? null : 'Database is reachable but appears empty.',
-            usingFallback: count <= 0, // Indicate fallback if data is missing
-            dbConnected: true
-        }));
+        setCarStatus({ exists: true });
       }
-
-      // 2) Fetch the specific car details to ensure it exists in the DB currently
-      // (Optional, since the 'car' prop is passed, but good for validation)
-      const { data: carData, error: carError } = await supabase
-          .from('cars')
-          .select('*')
-          .eq('id', car.id)
-          .single(); // Use single() to get a single record
-
-      if (carError || !carData) {
-          console.error(`Supabase fetch car error for ID ${car.id}:`, carError);
-          setCarStatus({
-              valid: false,
-              message: `Car with ID ${car.id} not found in the database.`,
-              usingFallback: carStatus.usingFallback, // Keep previous fallback status
-              dbConnected: carStatus.dbConnected // Keep previous DB status
-          });
-          setLoading(false);
-          return; // Stop if car not found
-      }
-
-      // Car is confirmed valid and exists
-      setCarStatus(prev => ({
-          ...prev,
-          valid: true,
-          message: prev.message || null, // Keep DB message if set
-          dbConnected: true // Confirmed connection by fetching car data
-      }));
 
       // 3) Fetch reviews for this car using Supabase
       await fetchReviewsSupabase(car.id); // Call the new Supabase fetch reviews function
@@ -163,7 +132,7 @@ export default function CarDetail({ car, onBack }) {
     } catch (err) {
       console.error('Unexpected error during data fetch:', err);
       setCarStatus({
-        valid: false,
+        exists: false,
         message: `An unexpected error occurred: ${err.message}`,
         usingFallback: false,
         dbConnected: false
@@ -277,32 +246,15 @@ export default function CarDetail({ car, onBack }) {
     ));
   }
 
-  // -- Database status info (fallback/connection issues) --
-  function renderDatabaseStatus() {
-    if (carStatus.message) { // Display message if there is one
-        const isError = !carStatus.dbConnected || !carStatus.valid;
-        const bgColor = isError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)'; // Red for error, Yellow for warning/fallback
-        const borderColor = isError ? 'rgba(239, 68, 68, 0.3)' : 'rgba(251, 191, 36, 0.3)';
-        const textColor = isError ? 'rgb(239, 68, 68)' : 'rgb(252, 211, 77)'; // Red or Yellow color
-
-        return (
-            <div
-                style={{
-                    background: `linear-gradient(to right, ${bgColor}, ${bgColor.replace('0.1', '0.05')})`,
-                    borderRadius: '0.5rem',
-                    border: `1px solid ${borderColor}`,
-                    marginBottom: '1rem',
-                    padding: '0.75rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    fontSize: '0.875rem',
-                    color: textColor
-                }}
-            >
-                <Database className="w-4 h-4 mr-2" />
-                {carStatus.message}
-            </div>
-        );
+  // -- Products status info (fallback/connection issues) --
+  function renderProductStatus() {
+    if (!carStatus.exists) {
+      return (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3 mb-4 flex items-center text-sm">
+          <Database className="w-4 h-4 mr-2" />
+          Using fallback products with sample data
+        </div>
+      );
     }
     return null;
   }
@@ -377,7 +329,7 @@ export default function CarDetail({ car, onBack }) {
 
   // -- If car is invalid or DB fails, show an error card --
   // Use the message in carStatus to determine what went wrong
-  if (!carStatus.valid) {
+  if (!carStatus.exists) {
     return (
       <div className="text-white"> {/* Ensure text is visible */}
         <div className="mb-4">
@@ -390,7 +342,7 @@ export default function CarDetail({ car, onBack }) {
           </button>
         </div>
 
-        {renderDatabaseStatus()} {/* This will now show the specific message */}
+        {renderProductStatus()} {/* This will now show the specific message */}
 
         <div
           style={{
@@ -406,9 +358,6 @@ export default function CarDetail({ car, onBack }) {
             {carStatus.message || "An unexpected error occurred while loading car details."}
           </p>
           {car?.id && <p className="text-sm mt-2 text-gray-300">Attempted Car ID: {car.id}</p>} {/* Show ID if available */}
-          <p className="text-sm mt-4 text-gray-400">
-            Please ensure the car ID is valid and your database connection is functioning correctly.
-          </p>
           <button
             onClick={fetchCarDetailsAndReviews} // Retry the combined fetch
             className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
@@ -436,7 +385,7 @@ export default function CarDetail({ car, onBack }) {
           </button>
         </div>
 
-        {renderDatabaseStatus()} {/* This will now show the specific message */}
+        {renderProductStatus()} {/* This will now show the specific message */}
 
         {/* Car Info Section */}
         <div className="relative rounded-lg overflow-hidden mb-6">

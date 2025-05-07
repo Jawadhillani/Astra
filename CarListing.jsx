@@ -232,7 +232,7 @@ export default function CarListing({ onSelectCar }) {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold mb-2 flex items-center">
-                <Database className="mr-3 h-6 w-6 text-violet-400" /> Premium Vehicle Database
+                <Database className="mr-3 h-6 w-6 text-violet-400" /> Premium Vehicle Products
               </h1>
               <p className="text-gray-300 max-w-2xl">
                 Explore our comprehensive collection of vehicles with detailed specifications and performance metrics

@@ -224,7 +224,7 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
               <p className="mt-1">{error}</p>
               {usingFallback && (
                 <p className="mt-2 text-sm">
-                  Note: You're currently using the fallback database which contains limited sample data.
+                  Note: You're currently using the fallback products which contains limited sample data.
                 </p>
               )}
             </div>
@@ -450,7 +450,7 @@ const ReviewAnalysis = ({ carId, usingFallback = false }) => {
             <p>Unable to load car data. Please try again later.</p>
             {usingFallback && (
               <p className="mt-2 text-sm">
-                Note: You're currently using the fallback database which contains limited sample data.
+                Note: You're currently using the fallback products which contains limited sample data.
               </p>
             )}
           </div>

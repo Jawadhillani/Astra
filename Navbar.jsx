@@ -95,7 +95,7 @@ const Navbar = ({ currentView, onChangeView }) => {
             
             {/* Car Dropdown */}
             <NavDropdown 
-              title="Cars" 
+              title="Products" 
               isActive={currentView === 'listing'} 
               onClick={() => onChangeView('listing')}
             >

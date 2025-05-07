@@ -15,7 +15,7 @@ export default function DatabaseStatus({ status = 'checking...', carsCount = 0, 
         <div className="flex items-center">
           {usingFallback && <Database className="w-3.5 h-3.5 mr-1 text-yellow-600" />}
           <span className={usingFallback ? 'text-yellow-600 font-medium' : ''}>
-            {usingFallback ? 'Fallback Database' : status}
+            {usingFallback ? 'Fallback Products' : status}
           </span>
         </div>
         
